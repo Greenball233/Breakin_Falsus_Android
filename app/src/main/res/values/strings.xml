@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Breakin Falsus</string>
+    <string name="host_hint">UDP Host</string>
+    <string name="port_hint">UDP Port</string>
+    <string name="keyboard_hid_hint">Keyboard HID Path</string>
+    <string name="mouse_hid_hint">Mouse HID Path</string>
+    <string name="apply_config">Apply</string>
+    <string name="keyboard_output_label">Keyboard Output</string>
+    <string name="mouse_output_label">Mouse Output</string>
+    <string name="sensor_input_label">Mouse Input</string>
+    <string name="sensitivity_label">Sensitivity</string>
+    <string name="deadzone_label">Deadzone</string>
+    <string name="status_idle">Ready</string>
+    <string name="touch_pad_label">Touch Zones</string>
+    <string name="show_settings">Settings</string>
+</resources>
