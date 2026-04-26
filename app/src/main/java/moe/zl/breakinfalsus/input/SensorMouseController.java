@@ -85,7 +85,7 @@ public class SensorMouseController implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (mode == Mode.ACCELEROMETER && event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            float xValue = event.values[0];
+            float xValue = event.values[1];
             if (Math.abs(xValue) < deadzone) {
                 return;
             }

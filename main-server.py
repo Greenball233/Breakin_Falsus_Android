@@ -8,8 +8,9 @@ from pynput import keyboard
 UDP_IP = "0.0.0.0"
 UDP_PORT = 5005
 SENSITIVITY = 1
-SCREEN_WIDTH = 1080
+SCREEN_WIDTH = 2880
 ANGLE_DEAD_ZONE = 0.0005
+ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
  
 # 状态变量
 current_x = SCREEN_WIDTH // 2
@@ -69,10 +70,8 @@ try:
                 # 基于角速度的绝对坐标模拟
                 print(raw_msg, key_type, key_para)  # 调试输出原始数据
                 if key_type == "A":  # 角速度移动
-                    key_para = float(key_para) - 10
-                    if abs(key_para) > ANGLE_DEAD_ZONE:
-                        current_x -= key_para * SENSITIVITY
-                    pydirectinput.moveRel(math.floor(current_x+0.5), 0)
+                    key_para = float(key_para)
+                    pydirectinput.moveTo(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / 4))
 
                 if key_type == "M":  # 鼠标移动
                     pydirectinput.moveRel(xOffset=math.floor(-float(key_para) * SENSITIVITY / 2), yOffset=0, relative=True)
