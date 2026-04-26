@@ -67,7 +67,7 @@ try:
 
             if is_controlling:
                 # 基于角速度的绝对坐标模拟
-                print(raw_msg)  # 调试输出原始数据
+                print(raw_msg, key_type, key_para)  # 调试输出原始数据
                 if key_type == "A":  # 角速度移动
                     key_para = float(key_para) - 10
                     if abs(key_para) > ANGLE_DEAD_ZONE:
