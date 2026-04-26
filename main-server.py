@@ -77,7 +77,7 @@ try:
                 if key_type == "M":  # 鼠标移动
                     pydirectinput.moveTo(x=math.floor(float(key_para) * SENSITIVITY + 0.5), relative=True)
 
-                if key_type == "K":  # 角速度移动
+                if key_type == "K":  # 键盘事件
                     for i,j in enumerate(str(key_para)):
                         if j == '1' and current_keys_state[i] == 0:
                             pydirectinput.keyDown(keys_table[i])
