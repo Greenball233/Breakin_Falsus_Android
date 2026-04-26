@@ -75,7 +75,7 @@ try:
                     pydirectinput.moveRel(math.floor(current_x+0.5), 0)
 
                 if key_type == "M":  # 鼠标移动
-                    pydirectinput.moveTo(x=math.floor(float(key_para) * SENSITIVITY + 0.5), relative=True)
+                    pydirectinput.moveRel(xOffset=math.floor(-float(key_para) * SENSITIVITY / 2), yOffset=0, relative=True)
 
                 if key_type == "K":  # 键盘事件
                     for i,j in enumerate(str(key_para)):
