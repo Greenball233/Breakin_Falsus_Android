@@ -213,7 +213,7 @@
                     android:id="@+id/deadzoneSlider"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:value="1"
+                    android:value="0.05"
                     android:valueFrom="0"
                     android:valueTo="10" />
 
@@ -227,7 +227,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:stepSize="1"
-                    android:value="12"
+                    android:value="4"
                     android:valueFrom="0"
                     android:valueTo="48" />
 
