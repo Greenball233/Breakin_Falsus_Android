@@ -271,8 +271,8 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         keyboardHidInput.setText(preferences.getString(PREF_KEYBOARD_HID, "/dev/hidg0"));
         mouseHidInput.setText(preferences.getString(PREF_MOUSE_HID, "/dev/hidg1"));
         sensitivitySlider.setValue(preferences.getFloat(PREF_SENSITIVITY, 20f));
-        deadzoneSlider.setValue(preferences.getFloat(PREF_DEADZONE, 1f));
-        chordBufferSlider.setValue(preferences.getFloat(PREF_CHORD_BUFFER, 12f));
+        deadzoneSlider.setValue(preferences.getFloat(PREF_DEADZONE, 0.05f));
+        chordBufferSlider.setValue(preferences.getFloat(PREF_CHORD_BUFFER, 4f));
         motionLogsSwitch.setChecked(preferences.getBoolean(PREF_MOTION_LOG_ENABLED, false));
         setSpinnerSelection(keyboardOutputSpinner, outputModes, preferences.getString(PREF_KEYBOARD_OUTPUT, MODE_UDP));
         setSpinnerSelection(mouseOutputSpinner, outputModes, preferences.getString(PREF_MOUSE_OUTPUT, MODE_UDP));

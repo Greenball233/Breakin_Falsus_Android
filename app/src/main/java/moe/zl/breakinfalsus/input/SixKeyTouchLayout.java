@@ -134,9 +134,6 @@ public class SixKeyTouchLayout extends FrameLayout {
     }
 
     private void updateStatesForPointer(boolean[] nextStates, float x, float y) {
-        if (y < getHeight() / 2f || getWidth() <= 0f) {
-            return;
-        }
         float segmentWidth = getWidth() / (float) keyStates.length;
         float clampedX = Math.max(0f, Math.min(x, getWidth() - 1f));
         int index = Math.max(0, Math.min(keyStates.length - 1, (int) (clampedX / segmentWidth)));
