@@ -9,11 +9,13 @@ UDP_IP = "0.0.0.0"
 UDP_PORT = 5005
 SENSITIVITY = 1
 SCREEN_WIDTH = 2880
+ZOOM_LEVEL = 2
 ANGLE_DEAD_ZONE = 0.0005
 ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
+MIDPOINT = SCREEN_WIDTH // ZOOM_LEVEL // 2
  
 # 状态变量
-current_x = SCREEN_WIDTH // 2
+current_x = MIDPOINT
 is_controlling = True 
 
 # 考虑替换为int,但是pydirectinput不支持（或者我没看懂   
@@ -70,11 +72,11 @@ try:
                 # 基于角速度的绝对坐标模拟
                 print(raw_msg, key_type, key_para)  # 调试输出原始数据
                 if key_type == "RESET":  # 重置事件
-                    current_x = SCREEN_WIDTH // 2
+                    current_x = MIDPOINT
                     pydirectinput.moveTo(x=current_x)
                 if key_type == "A":  # 角速度移动
                     key_para = float(key_para)
-                    pydirectinput.moveTo(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / 4))
+                    pydirectinput.moveTo(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / ZOOM_LEVEL / 2))
 
                 if key_type == "M":  # 鼠标移动
                     pydirectinput.moveRel(xOffset=math.floor(-float(key_para) * SENSITIVITY / 2), yOffset=0, relative=True)
