@@ -3,11 +3,41 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
-
-    <moe.zl.breakinfalsus.input.SixKeyTouchLayout
-        android:id="@+id/touchPad"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:baselineAligned="false">
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/showSettingsButton"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_margin="12dp"
+                android:text="@string/show_settings"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/resetButton"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="12dp"
+                android:text="@string/reset_btn"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <moe.zl.breakinfalsus.input.SixKeyTouchLayout
+            android:id="@+id/touchPad"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </LinearLayout>
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/settingsPanel"
@@ -30,6 +60,7 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:baselineAligned="false"
                     android:orientation="horizontal">
 
                     <com.google.android.material.textfield.TextInputLayout
@@ -65,6 +96,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
+                    android:baselineAligned="false"
                     android:orientation="horizontal">
 
                     <LinearLayout
@@ -121,31 +153,42 @@
                     </LinearLayout>
                 </LinearLayout>
 
-                <com.google.android.material.textfield.TextInputLayout
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="@string/keyboard_hid_hint">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/keyboardHidInput"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="/dev/hidg0" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:layout_marginTop="8dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:hint="@string/keyboard_hid_hint">
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:hint="@string/mouse_hid_hint">
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/keyboardHidInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="/dev/hidg0" />
+                    </com.google.android.material.textfield.TextInputLayout>
 
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/mouseHidInput"
+                    <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="/dev/hidg1" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        android:layout_marginTop="8dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:hint="@string/mouse_hid_hint">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/mouseHidInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="/dev/hidg1" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="match_parent"
@@ -174,6 +217,20 @@
                     android:valueFrom="0"
                     android:valueTo="10" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/chord_buffer_label" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/chordBufferSlider"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:stepSize="1"
+                    android:value="12"
+                    android:valueFrom="0"
+                    android:valueTo="48" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -188,6 +245,13 @@
                         android:layout_height="wrap_content"
                         android:text="@string/apply_config" />
 
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/motion_logs"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/show_motion_log"
+                        app:showText="true" />
+
                     <TextView
                         android:id="@+id/statusText"
                         android:layout_width="0dp"
@@ -200,14 +264,5 @@
         </ScrollView>
     </com.google.android.material.card.MaterialCardView>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/showSettingsButton"
-        style="@style/Widget.Material3.Button.TonalButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_margin="12dp"
-        android:text="@string/show_settings"
-        android:visibility="gone" />
 
 </FrameLayout>

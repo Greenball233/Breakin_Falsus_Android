@@ -51,7 +51,7 @@ public class UdpOutputTransport extends OutputTransport {
         executorService.shutdownNow();
     }
 
-    private void send(String message) {
+    public void send(String message) {
         if (host == null || host.trim().isEmpty() || port <= 0) {
             return;
         }

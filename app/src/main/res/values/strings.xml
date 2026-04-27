@@ -10,7 +10,10 @@
     <string name="sensor_input_label">Mouse Input</string>
     <string name="sensitivity_label">Sensitivity</string>
     <string name="deadzone_label">Deadzone</string>
+    <string name="chord_buffer_label">Chord Buffer (dp)</string>
     <string name="status_idle">Ready</string>
     <string name="touch_pad_label">Touch Zones</string>
     <string name="show_settings">Settings</string>
+    <string name="reset_btn">Reset</string>
+    <string name="show_motion_log">Show Motion Event Logs</string>
 </resources>

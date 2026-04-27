@@ -1,5 +1,8 @@
 package moe.zl.breakinfalsus;
 
+import static android.view.View.INVISIBLE;
+import static android.view.View.VISIBLE;
+
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -16,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.slider.Slider;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 
 import java.util.Locale;
 
@@ -41,6 +45,8 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private static final String PREF_SENSOR_MODE = "sensor_mode";
     private static final String PREF_SENSITIVITY = "sensitivity";
     private static final String PREF_DEADZONE = "deadzone";
+    private static final String PREF_CHORD_BUFFER = "chord_buffer";
+    private static final String PREF_MOTION_LOG_ENABLED = "motion_log_enabled";
     private static final String PREF_PANEL_HIDDEN = "panel_hidden";
     private static final long PANEL_ANIMATION_DURATION_MS = 220L;
 
@@ -55,9 +61,13 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private Spinner sensorModeSpinner;
     private View settingsPanel;
     private MaterialButton showSettingsButton;
+
+    private MaterialButton resetButton;
     private Slider sensitivitySlider;
     private Slider deadzoneSlider;
+    private Slider chordBufferSlider;
     private TextView statusText;
+    private SwitchMaterial motionLogsSwitch;
 
     private OutputTransport keyboardTransport;
     private OutputTransport mouseTransport;
@@ -113,9 +123,12 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         sensorModeSpinner = findViewById(R.id.sensorModeSpinner);
         settingsPanel = findViewById(R.id.settingsPanel);
         showSettingsButton = findViewById(R.id.showSettingsButton);
+        resetButton = findViewById(R.id.resetButton);
         sensitivitySlider = findViewById(R.id.sensitivitySlider);
         deadzoneSlider = findViewById(R.id.deadzoneSlider);
+        chordBufferSlider = findViewById(R.id.chordBufferSlider);
         statusText = findViewById(R.id.statusText);
+        motionLogsSwitch = findViewById(R.id.motion_logs);
     }
 
     private void setupDropdowns() {
@@ -150,6 +163,15 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                 sensorMouseController.setDeadzone(value);
             }
         });
+        chordBufferSlider.addOnChangeListener((slider, value, fromUser) -> {
+            touchPad.setChordBufferDp(value);
+            if (fromUser) {
+                updateStatus(String.format(Locale.US, "Chord buffer %.0fdp", value));
+            }
+        });
+        motionLogsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            touchPad.setMotionLogEnabled(isChecked);
+        });
     }
 
     private void applyConfiguration() {
@@ -164,11 +186,21 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         );
         sensorMouseController.setSensitivity(sensitivitySlider.getValue());
         sensorMouseController.setDeadzone(deadzoneSlider.getValue());
+        touchPad.setChordBufferDp(chordBufferSlider.getValue());
+        touchPad.setMotionLogEnabled(motionLogsSwitch.isChecked());
         updateStatus("Configuration applied");
+        if (mouseTransport instanceof UdpOutputTransport) {
+            resetButton.setVisibility(VISIBLE);
+            resetButton.setOnClickListener((View v)->{
+                ((UdpOutputTransport) mouseTransport).send("RESET|0");
+            });
+        } else {
+            resetButton.setVisibility(INVISIBLE);
+        }
     }
 
     private void hideSettingsPanel() {
-        if (settingsPanel.getVisibility() == View.VISIBLE) {
+        if (settingsPanel.getVisibility() == VISIBLE) {
             settingsPanel.animate().cancel();
             showSettingsButton.animate().cancel();
             settingsPanel.animate()
@@ -186,11 +218,11 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     }
 
     private void showSettingsPanel() {
-        if (settingsPanel.getVisibility() != View.VISIBLE) {
+        if (settingsPanel.getVisibility() != VISIBLE) {
             showSettingsButton.animate().cancel();
             showSettingsButton.setVisibility(View.GONE);
             settingsPanel.animate().cancel();
-            settingsPanel.setVisibility(View.VISIBLE);
+            settingsPanel.setVisibility(VISIBLE);
             settingsPanel.setAlpha(0f);
             settingsPanel.setTranslationY(-settingsPanel.getHeight() * 0.2f - dp(8));
             settingsPanel.animate()
@@ -205,7 +237,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         showSettingsButton.setAlpha(0f);
         showSettingsButton.setScaleX(0.92f);
         showSettingsButton.setScaleY(0.92f);
-        showSettingsButton.setVisibility(View.VISIBLE);
+        showSettingsButton.setVisibility(VISIBLE);
         showSettingsButton.animate()
                 .alpha(1f)
                 .scaleX(1f)
@@ -221,12 +253,12 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
             settingsPanel.setVisibility(View.GONE);
             settingsPanel.setAlpha(1f);
             settingsPanel.setTranslationY(0f);
-            showSettingsButton.setVisibility(View.VISIBLE);
+            showSettingsButton.setVisibility(VISIBLE);
             showSettingsButton.setAlpha(1f);
             showSettingsButton.setScaleX(1f);
             showSettingsButton.setScaleY(1f);
         } else {
-            settingsPanel.setVisibility(View.VISIBLE);
+            settingsPanel.setVisibility(VISIBLE);
             settingsPanel.setAlpha(1f);
             settingsPanel.setTranslationY(0f);
             showSettingsButton.setVisibility(View.GONE);
@@ -240,6 +272,8 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         mouseHidInput.setText(preferences.getString(PREF_MOUSE_HID, "/dev/hidg1"));
         sensitivitySlider.setValue(preferences.getFloat(PREF_SENSITIVITY, 20f));
         deadzoneSlider.setValue(preferences.getFloat(PREF_DEADZONE, 1f));
+        chordBufferSlider.setValue(preferences.getFloat(PREF_CHORD_BUFFER, 12f));
+        motionLogsSwitch.setChecked(preferences.getBoolean(PREF_MOTION_LOG_ENABLED, false));
         setSpinnerSelection(keyboardOutputSpinner, outputModes, preferences.getString(PREF_KEYBOARD_OUTPUT, MODE_UDP));
         setSpinnerSelection(mouseOutputSpinner, outputModes, preferences.getString(PREF_MOUSE_OUTPUT, MODE_UDP));
         setSpinnerSelection(sensorModeSpinner, sensorModes, preferences.getString(PREF_SENSOR_MODE, SENSOR_GYRO));
@@ -257,6 +291,8 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                 .putString(PREF_SENSOR_MODE, getSelectedSensorMode())
                 .putFloat(PREF_SENSITIVITY, sensitivitySlider.getValue())
                 .putFloat(PREF_DEADZONE, deadzoneSlider.getValue())
+                .putFloat(PREF_CHORD_BUFFER, chordBufferSlider.getValue())
+                .putBoolean(PREF_MOTION_LOG_ENABLED, motionLogsSwitch.isChecked())
                 .putBoolean(PREF_PANEL_HIDDEN, true)
                 .apply();
     }

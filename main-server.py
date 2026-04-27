@@ -69,6 +69,9 @@ try:
             if is_controlling:
                 # 基于角速度的绝对坐标模拟
                 print(raw_msg, key_type, key_para)  # 调试输出原始数据
+                if key_type == "RESET":  # 重置事件
+                    current_x = SCREEN_WIDTH // 2
+                    pydirectinput.moveTo(x=current_x)
                 if key_type == "A":  # 角速度移动
                     key_para = float(key_para)
                     pydirectinput.moveTo(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / 4))
