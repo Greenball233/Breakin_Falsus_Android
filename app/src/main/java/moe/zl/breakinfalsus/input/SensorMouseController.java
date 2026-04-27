@@ -28,7 +28,7 @@ public class SensorMouseController implements SensorEventListener {
 
     private Mode mode = Mode.GYROSCOPE;
     private float sensitivity = 20f;
-    private float deadzone = 1f;
+    private float deadzone = 0.01f;
     private boolean started;
 
     public SensorMouseController(@NonNull Context context, @NonNull MouseSignalListener listener) {
