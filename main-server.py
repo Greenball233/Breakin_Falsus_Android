@@ -42,6 +42,10 @@ def on_press(key):
     except AttributeError:
         pass
 
+def move_to_rel(x):
+    current_x = pydirectinput.position()[0]
+    pydirectinput.moveRel(xOffset=x-current_x)
+
 # 启动非阻塞按键监听器 
 listener = keyboard.Listener(on_press=on_press)
 listener.start()
@@ -72,11 +76,10 @@ try:
                 # 基于角速度的绝对坐标模拟
                 print(raw_msg, key_type, key_para)  # 调试输出原始数据
                 if key_type == "RESET":  # 重置事件
-                    current_x = MIDPOINT
-                    pydirectinput.moveTo(x=current_x)
+                    move_to_rel(x=MIDPOINT) # 游戏内依然无效
                 if key_type == "A":  # 角速度移动
                     key_para = float(key_para)
-                    pydirectinput.moveTo(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / ZOOM_LEVEL / 2))
+                    move_to_rel(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / ZOOM_LEVEL / 2))
 
                 if key_type == "M":  # 鼠标移动
                     pydirectinput.moveRel(xOffset=math.floor(-float(key_para) * SENSITIVITY / 2), yOffset=0, relative=True)
