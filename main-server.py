@@ -1,6 +1,7 @@
 import math
 import socket
 import pydirectinput
+import threading
 import time
 from pynput import keyboard
 
@@ -9,10 +10,13 @@ UDP_IP = "0.0.0.0"
 UDP_PORT = 5005
 SENSITIVITY = 1
 SCREEN_WIDTH = 2880
+SCREEN_WIDTH = 1920
 ZOOM_LEVEL = 2
-ANGLE_DEAD_ZONE = 0.0005
+ANGLE_DEAD_ZONE = 0.05
 ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
 MIDPOINT = SCREEN_WIDTH // ZOOM_LEVEL // 2
+MAX_REL_STEP = 8
+INTERPOLATION_SLEEP = 0.005
  
 # 状态变量
 current_x = MIDPOINT
@@ -26,6 +30,11 @@ current_keys_state = [0] * len(keys_table)
 
 # 禁用 pydirectinput 默认延迟
 pydirectinput.PAUSE = 0
+
+move_target_x = MIDPOINT
+move_target_lock = threading.Lock()
+move_target_event = threading.Event()
+move_stop_event = threading.Event()
 
 def on_press(key):
     global is_controlling, current_x
@@ -43,8 +52,36 @@ def on_press(key):
         pass
 
 def move_to_rel(x):
-    current_x = pydirectinput.position()[0]
-    pydirectinput.moveRel(xOffset=x-current_x)
+    global move_target_x
+    with move_target_lock:
+        move_target_x = int(round(x))
+    move_target_event.set()
+
+def move_worker():
+    while not move_stop_event.is_set():
+        move_target_event.wait(0.05)
+        if move_stop_event.is_set():
+            break
+        if not move_target_event.is_set():
+            continue
+
+        while not move_stop_event.is_set():
+            with move_target_lock:
+                target_x = move_target_x
+
+            current_x = pydirectinput.position()[0]
+            delta_x = int(round(target_x - current_x))
+            if delta_x == 0:
+                move_target_event.clear()
+                break
+
+            step_delta = max(-MAX_REL_STEP, min(MAX_REL_STEP, delta_x))
+            print(f"移动: 当前={current_x} 目标={target_x} 步长={step_delta}")  # 调试输出移动信息
+            pydirectinput.moveRel(xOffset=step_delta, yOffset=0, relative=True)
+            time.sleep(INTERPOLATION_SLEEP)
+
+move_thread = threading.Thread(target=move_worker, name="move-worker", daemon=True)
+move_thread.start()
 
 # 启动非阻塞按键监听器 
 listener = keyboard.Listener(on_press=on_press)
@@ -77,6 +114,7 @@ try:
                 print(raw_msg, key_type, key_para)  # 调试输出原始数据
                 if key_type == "RESET":  # 重置事件
                     move_to_rel(x=MIDPOINT) # 游戏内依然无效
+
                 if key_type == "A":  # 角速度移动
                     key_para = float(key_para)
                     move_to_rel(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / ZOOM_LEVEL / 2))
@@ -97,4 +135,7 @@ try:
             continue
 except KeyboardInterrupt:
     print("\n[退出] 正在关闭...")
+    move_stop_event.set()
+    move_target_event.set()
+    move_thread.join(timeout=0.2)
     listener.stop()
