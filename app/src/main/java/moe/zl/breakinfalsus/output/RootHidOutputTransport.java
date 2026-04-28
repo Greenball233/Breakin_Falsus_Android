@@ -50,7 +50,7 @@ public class RootHidOutputTransport extends OutputTransport {
     }
 
     @Override
-    public void sendGyroscope(int value) {
+    public void sendGyroscope(float value) {
         // Mouse motion is emitted via sendMouseMove after value filtering.
     }
 
@@ -63,6 +63,19 @@ public class RootHidOutputTransport extends OutputTransport {
                 0x00
         };
         writeReport(mousePath, report);
+    }
+
+    @Override
+    public void sendPauseToggle() {
+        byte[] pressed = new byte[8];
+        pressed[2] = 0x29;
+        writeReport(keyboardPath, pressed);
+        writeReport(keyboardPath, new byte[8]);
+    }
+
+    @Override
+    public void sendAccelerometerCalibration(float zeroG) {
+        // Calibration is applied on-device before HID mouse motion is emitted.
     }
 
     @Override

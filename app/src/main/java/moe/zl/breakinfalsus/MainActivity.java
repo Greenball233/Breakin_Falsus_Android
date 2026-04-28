@@ -3,18 +3,23 @@ package moe.zl.breakinfalsus;
 import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
 
+import android.app.ActivityManager;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
-import android.view.ViewPropertyAnimator;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.slider.Slider;
@@ -30,7 +35,6 @@ import moe.zl.breakinfalsus.output.RootHidOutputTransport;
 import moe.zl.breakinfalsus.output.UdpOutputTransport;
 
 public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout.OnKeyStateChangeListener {
-
     private static final String MODE_UDP = "UDP";
     private static final String MODE_HID = "ROOT_HID";
     private static final String SENSOR_ACCEL = "ACCEL";
@@ -45,10 +49,12 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private static final String PREF_SENSOR_MODE = "sensor_mode";
     private static final String PREF_SENSITIVITY = "sensitivity";
     private static final String PREF_DEADZONE = "deadzone";
+    private static final String PREF_ACCEL_ZERO_G = "accel_zero_g";
     private static final String PREF_CHORD_BUFFER = "chord_buffer";
     private static final String PREF_MOTION_LOG_ENABLED = "motion_log_enabled";
     private static final String PREF_PANEL_HIDDEN = "panel_hidden";
-    private static final long PANEL_ANIMATION_DURATION_MS = 220L;
+    private static final long PANEL_ANIMATION_DURATION_MS = 200L;
+    private static final int ACCEL_MOVE_STEPS = 3;
 
     private SixKeyTouchLayout touchPad;
     private SensorMouseController sensorMouseController;
@@ -59,10 +65,15 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private Spinner keyboardOutputSpinner;
     private Spinner mouseOutputSpinner;
     private Spinner sensorModeSpinner;
+    private View rootContent;
+    private View topBar;
     private View settingsPanel;
     private MaterialButton showSettingsButton;
 
     private MaterialButton resetButton;
+    private MaterialButton pauseButton;
+    private MaterialButton calibrateButton;
+    private MaterialButton lockTaskButton;
     private Slider sensitivitySlider;
     private Slider deadzoneSlider;
     private Slider chordBufferSlider;
@@ -78,9 +89,11 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
         preferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         bindViews();
+        applyWindowInsets();
         setupDropdowns();
         sensorMouseController = new SensorMouseController(
                 this,
@@ -91,29 +104,32 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                             return;
                         }
                         mouseTransport.sendAccelerometer(value);
-                        mouseTransport.sendMouseMove(hidDelta, 0);
+                        sendInterpolatedMouseMove(mouseTransport, hidDelta, ACCEL_MOVE_STEPS);
                         updateStatus(String.format(Locale.US, "Accel %.3f -> %d", value, hidDelta));
                     }
 
                     @Override
-                    public void onGyroscopeValue(int value, int hidDelta) {
+                    public void onGyroscopeValue(float value, int hidDelta) {
                         if (mouseTransport == null) {
                             return;
                         }
                         mouseTransport.sendGyroscope(value);
                         mouseTransport.sendMouseMove(hidDelta, 0);
-                        updateStatus(String.format(Locale.US, "Gyro %d -> %d", value, hidDelta));
+                        updateStatus(String.format(Locale.US, "Gyro %.3f -> %d", value, hidDelta));
                     }
                 }
         );
         setupActions();
         restorePreferences();
         applyConfiguration();
+        updateLockTaskButtonLabel();
         touchPad.setOnKeyStateChangeListener(this);
     }
 
     private void bindViews() {
         touchPad = findViewById(R.id.touchPad);
+        rootContent = findViewById(R.id.rootContent);
+        topBar = findViewById(R.id.topBar);
         hostInput = findViewById(R.id.hostInput);
         portInput = findViewById(R.id.portInput);
         keyboardHidInput = findViewById(R.id.keyboardHidInput);
@@ -124,6 +140,9 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         settingsPanel = findViewById(R.id.settingsPanel);
         showSettingsButton = findViewById(R.id.showSettingsButton);
         resetButton = findViewById(R.id.resetButton);
+        pauseButton = findViewById(R.id.pauseButton);
+        calibrateButton = findViewById(R.id.calibrateButton);
+        lockTaskButton = findViewById(R.id.lockTaskButton);
         sensitivitySlider = findViewById(R.id.sensitivitySlider);
         deadzoneSlider = findViewById(R.id.deadzoneSlider);
         chordBufferSlider = findViewById(R.id.chordBufferSlider);
@@ -153,6 +172,14 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         showSettingsButton.setOnClickListener(view -> {
             showSettingsPanel();
         });
+        pauseButton.setOnClickListener(view -> {
+            if (keyboardTransport != null) {
+                keyboardTransport.sendPauseToggle();
+                updateStatus("Esc pause sent");
+            }
+        });
+        calibrateButton.setOnClickListener(view -> calibrateAccelerometer());
+        lockTaskButton.setOnClickListener(view -> toggleLockTaskMode());
         sensitivitySlider.addOnChangeListener((slider, value, fromUser) -> {
             if (sensorMouseController != null) {
                 sensorMouseController.setSensitivity(value);
@@ -186,8 +213,12 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         );
         sensorMouseController.setSensitivity(sensitivitySlider.getValue());
         sensorMouseController.setDeadzone(deadzoneSlider.getValue());
+        sensorMouseController.setAccelerometerZero(preferences.getFloat(PREF_ACCEL_ZERO_G, 0f));
         touchPad.setChordBufferDp(chordBufferSlider.getValue());
         touchPad.setMotionLogEnabled(motionLogsSwitch.isChecked());
+        if (mouseTransport != null) {
+            mouseTransport.sendAccelerometerCalibration(sensorMouseController.getAccelerometerZero());
+        }
         updateStatus("Configuration applied");
         if (mouseTransport instanceof UdpOutputTransport) {
             resetButton.setVisibility(VISIBLE);
@@ -272,6 +303,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         mouseHidInput.setText(preferences.getString(PREF_MOUSE_HID, "/dev/hidg1"));
         sensitivitySlider.setValue(preferences.getFloat(PREF_SENSITIVITY, 20f));
         deadzoneSlider.setValue(preferences.getFloat(PREF_DEADZONE, 0.05f));
+        sensorMouseController.setAccelerometerZero(preferences.getFloat(PREF_ACCEL_ZERO_G, 0f));
         chordBufferSlider.setValue(preferences.getFloat(PREF_CHORD_BUFFER, 4f));
         motionLogsSwitch.setChecked(preferences.getBoolean(PREF_MOTION_LOG_ENABLED, false));
         setSpinnerSelection(keyboardOutputSpinner, outputModes, preferences.getString(PREF_KEYBOARD_OUTPUT, MODE_UDP));
@@ -291,6 +323,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                 .putString(PREF_SENSOR_MODE, getSelectedSensorMode())
                 .putFloat(PREF_SENSITIVITY, sensitivitySlider.getValue())
                 .putFloat(PREF_DEADZONE, deadzoneSlider.getValue())
+                .putFloat(PREF_ACCEL_ZERO_G, sensorMouseController.getAccelerometerZero())
                 .putFloat(PREF_CHORD_BUFFER, chordBufferSlider.getValue())
                 .putBoolean(PREF_MOTION_LOG_ENABLED, motionLogsSwitch.isChecked())
                 .putBoolean(PREF_PANEL_HIDDEN, true)
@@ -348,10 +381,36 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         statusText.setText(message);
     }
 
+    private void calibrateAccelerometer() {
+        float zeroG = sensorMouseController.calibrateAccelerometerZero();
+        preferences.edit().putFloat(PREF_ACCEL_ZERO_G, zeroG).apply();
+        if (mouseTransport != null) {
+            mouseTransport.sendAccelerometerCalibration(zeroG);
+        }
+        updateStatus(String.format(Locale.US, "Accel zero saved %.3fg", zeroG));
+    }
+
+    private void sendInterpolatedMouseMove(@NonNull OutputTransport transport, int totalDeltaX, int steps) {
+        if (totalDeltaX == 0 || steps <= 1) {
+            transport.sendMouseMove(totalDeltaX, 0);
+            return;
+        }
+        int movedX = 0;
+        for (int step = 1; step <= steps; step++) {
+            int interpolatedX = Math.round(totalDeltaX * step / (float) steps);
+            int stepDeltaX = interpolatedX - movedX;
+            if (stepDeltaX != 0) {
+                transport.sendMouseMove(stepDeltaX, 0);
+                movedX += stepDeltaX;
+            }
+        }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         sensorMouseController.start();
+        updateLockTaskButtonLabel();
     }
 
     @Override
@@ -365,6 +424,21 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         super.onDestroy();
         closeTransport(keyboardTransport);
         closeTransport(mouseTransport);
+    }
+
+    private void toggleLockTaskMode() {
+        try {
+            if (isLockTaskActive()) {
+                stopLockTask();
+                updateStatus("Lock task stopped");
+            } else {
+                startLockTask();
+                updateStatus("Lock task requested");
+            }
+            updateLockTaskButtonLabel();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            updateStatus("Lock task unavailable");
+        }
     }
 
     @Override
@@ -387,5 +461,60 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         if (transport != null) {
             transport.close();
         }
+    }
+
+    private void applyWindowInsets() {
+        if (rootContent == null) {
+            return;
+        }
+        final int rootPaddingLeft = rootContent.getPaddingLeft();
+        final int rootPaddingTop = rootContent.getPaddingTop();
+        final int rootPaddingRight = rootContent.getPaddingRight();
+        final int rootPaddingBottom = rootContent.getPaddingBottom();
+        final int topBarPaddingLeft = topBar == null ? 0 : topBar.getPaddingLeft();
+        final int topBarPaddingTop = topBar == null ? 0 : topBar.getPaddingTop();
+        final int topBarPaddingRight = topBar == null ? 0 : topBar.getPaddingRight();
+        final int topBarPaddingBottom = topBar == null ? 0 : topBar.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(rootContent, (view, insets) -> {
+            Insets statusInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars());
+            Insets cutoutInsets = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            int topInset = Math.max(statusInsets.top, cutoutInsets.top);
+            int leftInset = Math.max(statusInsets.left, cutoutInsets.left);
+            int rightInset = Math.max(statusInsets.right, cutoutInsets.right);
+
+            view.setPadding(
+                    rootPaddingLeft + leftInset,
+                    rootPaddingTop,
+                    rootPaddingRight + rightInset,
+                    rootPaddingBottom
+            );
+            if (topBar != null) {
+                topBar.setPadding(
+                        topBarPaddingLeft,
+                        topBarPaddingTop + topInset,
+                        topBarPaddingRight,
+                        topBarPaddingBottom
+                );
+            }
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(rootContent);
+    }
+
+    private boolean isLockTaskActive() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false;
+        }
+        ActivityManager activityManager = getSystemService(ActivityManager.class);
+        return activityManager != null
+                && activityManager.getLockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE;
+    }
+
+    private void updateLockTaskButtonLabel() {
+        if (lockTaskButton == null) {
+            return;
+        }
+        lockTaskButton.setText(isLockTaskActive() ? R.string.lock_task_btn : R.string.unlock_task_btn);
     }
 }

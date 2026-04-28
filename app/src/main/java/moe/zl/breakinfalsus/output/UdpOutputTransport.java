@@ -37,13 +37,23 @@ public class UdpOutputTransport extends OutputTransport {
     }
 
     @Override
-    public void sendGyroscope(int value) {
-        send(String.format(Locale.US, "M|%d", value));
+    public void sendGyroscope(float value) {
+        send(String.format(Locale.US, "M|%s", value));
     }
 
     @Override
     public void sendMouseMove(int deltaX, int deltaY) {
         // UDP mode uses semantic A/M packets, so raw mouse HID deltas are ignored here.
+    }
+
+    @Override
+    public void sendPauseToggle() {
+        send("P|1");
+    }
+
+    @Override
+    public void sendAccelerometerCalibration(float zeroG) {
+        send(String.format(Locale.US, "AZ|%s", zeroG));
     }
 
     @Override

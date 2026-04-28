@@ -1,69 +1,160 @@
 import math
 import socket
-import pydirectinput
 import threading
 import time
+from pathlib import Path
+
+import pydirectinput
 from pynput import keyboard
+
 try:
     import tomllib
-except:
+except ImportError:
     import tomli as tomllib
 
-with open('server-config.toml', 'rb') as f:
-    config = tomllib.load(f)
 
-UDP_IP = config.get("udp_ip", "0.0.0.0")
-UDP_PORT = config.get("udp_port", 5005)
-SENSITIVITY = config.get("sensitivity", 1)
-SCREEN_WIDTH = config.get("screen_width", 2880)
-ZOOM_LEVEL = config.get("zoom_level", 2)
-ANGLE_DEAD_ZONE = config.get("angle_dead_zone", 0.05)
-MAX_REL_STEP = config.get("max_rel_step", 8)
-INTERPOLATION_SLEEP = config.get("interpolation_sleep", 0.005)
+CONFIG_PATH = Path("server-config.toml")
+DEFAULT_CONFIG = {
+    "udp_ip": "0.0.0.0",
+    "udp_port": 5005,
+    "sensitivity": 1.0,
+    "screen_width": 2880,
+    "zoom_level": 2,
+    "angle_dead_zone": 0.05,
+    "interpolation_sleep": 0.005,
+    "accel_interpolation_steps": 3,
+    "accel_zero_g": 0.0,
+    "accel_filter_alpha": 0.35,
+    "accel_target_hysteresis_steps": 1,
+}
+
+
+def load_config():
+    config = dict(DEFAULT_CONFIG)
+    if CONFIG_PATH.exists():
+        with CONFIG_PATH.open("rb") as config_file:
+            loaded = tomllib.load(config_file)
+        config.update(loaded)
+    return config
+
+
+def save_config(config):
+    ordered_keys = list(DEFAULT_CONFIG.keys())
+    ordered_keys.extend(key for key in config.keys() if key not in ordered_keys)
+    lines = []
+    for key in ordered_keys:
+        value = config[key]
+        if isinstance(value, str):
+            encoded = value.replace("\\", "\\\\").replace('"', '\\"')
+            lines.append(f'{key} = "{encoded}"')
+        elif isinstance(value, bool):
+            lines.append(f"{key} = {'true' if value else 'false'}")
+        else:
+            lines.append(f"{key} = {value}")
+    CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+config = load_config()
+if not CONFIG_PATH.exists():
+    save_config(config)
+
+UDP_IP = config["udp_ip"]
+UDP_PORT = int(config["udp_port"])
+SENSITIVITY = float(config["sensitivity"])
+SCREEN_WIDTH = int(config["screen_width"])
+ZOOM_LEVEL = int(config["zoom_level"])
+ANGLE_DEAD_ZONE = float(config["angle_dead_zone"])
+INTERPOLATION_SLEEP = float(config["interpolation_sleep"])
+ACCEL_INTERPOLATION_STEPS = max(1, int(config.get("accel_interpolation_steps", 3)))
+ACCEL_FILTER_ALPHA = float(config.get("accel_filter_alpha", 0.35))
+ACCEL_TARGET_HYSTERESIS_PX = max(
+    ACCEL_INTERPOLATION_STEPS,
+    int(config.get("accel_target_hysteresis_steps", 1)) * ACCEL_INTERPOLATION_STEPS
+)
 
 ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
 MIDPOINT = SCREEN_WIDTH // ZOOM_LEVEL // 2
- 
-# 状态变量
-current_x = MIDPOINT
-is_controlling = True 
 
-# 考虑替换为int,但是pydirectinput不支持（或者我没看懂   
+is_controlling = True
+accel_zero_g = float(config.get("accel_zero_g", 0.0))
+accel_filtered_value = 0.0
+gyro_remainder = 0.0
+
 keys_table = [
     "shift", "a", "s", "d", "f", "space"
 ]
 current_keys_state = [0] * len(keys_table)
 
-# 禁用 pydirectinput 默认延迟
 pydirectinput.PAUSE = 0
 
 move_target_x = MIDPOINT
+last_queued_target_x = MIDPOINT
+move_steps_remaining = 0
 move_target_lock = threading.Lock()
 move_target_event = threading.Event()
 move_stop_event = threading.Event()
 
+
+def log(message):
+    print(f"[{time.strftime('%H:%M:%S')}] {message}")
+
+
+def set_accel_zero(new_zero):
+    global accel_zero_g, accel_filtered_value, config
+    accel_zero_g = float(new_zero)
+    accel_filtered_value = 0.0
+    config["accel_zero_g"] = accel_zero_g
+    save_config(config)
+    log(f"Saved accelerometer zero g = {accel_zero_g:.5f}")
+
+
 def on_press(key):
-    global is_controlling, current_x
+    global is_controlling
     try:
-        # 监听空格键
         if key == keyboard.Key.backspace:
             is_controlling = not is_controlling
-            status = "【已开启】" if is_controlling else "【已释放】"
-            print(f"\n[{time.strftime('%H:%M:%S')}] 状态变更: {status}")
-            
-            # 重新开启时，从鼠标当前实际位置开始接管，防止跳变
-            if is_controlling:
-                current_x = pydirectinput.position()[0]
+            log(f"Control {'enabled' if is_controlling else 'disabled'}")
     except AttributeError:
         pass
 
-def move_to_rel(x):
-    global move_target_x
+
+def quantize_accel_target(raw_target_x):
+    delta_from_midpoint = raw_target_x - MIDPOINT
+    quantized_delta = round(delta_from_midpoint / ACCEL_INTERPOLATION_STEPS) * ACCEL_INTERPOLATION_STEPS
+    return MIDPOINT + quantized_delta
+
+
+def queue_accel_target(raw_value):
+    global accel_filtered_value, move_target_x, move_steps_remaining, last_queued_target_x
+    adjusted_value = raw_value - accel_zero_g
+    accel_filtered_value += (adjusted_value - accel_filtered_value) * ACCEL_FILTER_ALPHA
+    filtered_value = 0.0 if abs(accel_filtered_value) < ANGLE_DEAD_ZONE else accel_filtered_value
+    raw_target_x = math.floor(filtered_value * ACCEL_COEFFICIENT + MIDPOINT)
+    target_x = quantize_accel_target(raw_target_x)
+    if abs(target_x - MIDPOINT) <= ACCEL_TARGET_HYSTERESIS_PX:
+        target_x = MIDPOINT
     with move_target_lock:
-        move_target_x = int(round(x))
+        if target_x == last_queued_target_x and move_steps_remaining > 0:
+            return
+        if abs(target_x - move_target_x) < ACCEL_TARGET_HYSTERESIS_PX and target_x != MIDPOINT:
+            return
+        move_target_x = target_x
+        last_queued_target_x = target_x
+        move_steps_remaining = ACCEL_INTERPOLATION_STEPS
     move_target_event.set()
 
+
+def move_to_midpoint():
+    global move_target_x, move_steps_remaining, last_queued_target_x
+    with move_target_lock:
+        move_target_x = MIDPOINT
+        last_queued_target_x = MIDPOINT
+        move_steps_remaining = ACCEL_INTERPOLATION_STEPS
+    move_target_event.set()
+
+
 def move_worker():
+    global move_steps_remaining
     while not move_stop_event.is_set():
         move_target_event.wait(0.05)
         if move_stop_event.is_set():
@@ -71,77 +162,108 @@ def move_worker():
         if not move_target_event.is_set():
             continue
 
-        while not move_stop_event.is_set():
+        with move_target_lock:
+            target_x = move_target_x
+            steps_remaining = move_steps_remaining
+
+        current_x = pydirectinput.position()[0]
+        delta_x = int(round(target_x - current_x))
+        if delta_x == 0 or steps_remaining <= 0:
             with move_target_lock:
-                target_x = move_target_x
+                if move_target_x == target_x:
+                    move_steps_remaining = 0
+                    move_target_event.clear()
+            continue
 
-            current_x = pydirectinput.position()[0]
-            delta_x = int(round(target_x - current_x))
-            if delta_x == 0:
-                move_target_event.clear()
-                break
+        step_delta = int(round(delta_x / steps_remaining))
+        if step_delta == 0:
+            step_delta = 1 if delta_x > 0 else -1
+        pydirectinput.moveRel(xOffset=step_delta, yOffset=0, relative=True)
 
-            step_delta = max(-MAX_REL_STEP, min(MAX_REL_STEP, delta_x))
-            print(f"移动: 当前={current_x} 目标={target_x} 步长={step_delta}")  # 调试输出移动信息
-            pydirectinput.moveRel(xOffset=step_delta, yOffset=0, relative=True)
-            time.sleep(INTERPOLATION_SLEEP)
+        with move_target_lock:
+            if move_target_x == target_x:
+                move_steps_remaining = max(0, move_steps_remaining - 1)
+                if move_steps_remaining == 0:
+                    move_target_event.clear()
+                    print(f"Reached target x={target_x} with final delta={delta_x}")
+        time.sleep(INTERPOLATION_SLEEP)
+
+
+def send_pause_key():
+    pydirectinput.press("esc")
+    log("Sent Esc pause toggle")
+
+
+def apply_gyro(raw_value):
+    global gyro_remainder
+    adjusted_value = 0.0 if abs(raw_value) < ANGLE_DEAD_ZONE else raw_value
+    total_delta = (-adjusted_value * SENSITIVITY / 2.0) + gyro_remainder
+    hid_delta = math.trunc(total_delta)
+    gyro_remainder = total_delta - hid_delta 
+    if hid_delta != 0:
+        pydirectinput.moveRel(xOffset=hid_delta, yOffset=0, relative=True)
+
+
+listener = keyboard.Listener(on_press=on_press)
+listener.start()
 
 move_thread = threading.Thread(target=move_worker, name="move-worker", daemon=True)
 move_thread.start()
 
-# 启动非阻塞按键监听器 
-listener = keyboard.Listener(on_press=on_press)
-listener.start()
-
-# 设置网络
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
-sock.settimeout(0.1)  # 避免 recvfrom 永久阻塞
+sock.settimeout(0.1)
 
-print(f"[{time.strftime('%H:%M:%S')}] 接收端已启动")
-print(f"灵敏度: {SENSITIVITY} | 监听端口: {UDP_PORT}")
-print("-" * 60)
-
-last_print_time = time.time()
-msg_count = 0
+log("Receiver started")
+log(
+    "port=%d sensitivity=%.3f accel_steps=%d accel_zero=%.5f"
+    % (UDP_PORT, SENSITIVITY, ACCEL_INTERPOLATION_STEPS, accel_zero_g)
+)
 
 try:
     while True:
         try:
             data, addr = sock.recvfrom(1024)
-            curr_time = time.time()
-            
-            raw_msg = data.decode().split('|')
-            key_type = str(raw_msg[0])
+            raw_msg = data.decode().split("|", 1)
+            if len(raw_msg) != 2:
+                continue
+
+            key_type = raw_msg[0]
             key_para = raw_msg[1]
 
-            if is_controlling:
-                # 基于角速度的绝对坐标模拟
-                print(raw_msg, key_type, key_para)  # 调试输出原始数据
-                if key_type == "RESET":  # 重置事件
-                    move_to_rel(x=MIDPOINT) # 游戏内依然无效
+            if key_type == "AZ":
+                set_accel_zero(float(key_para))
+                continue
+            if key_type == "P":
+                send_pause_key()
+                continue
 
-                if key_type == "A":  # 角速度移动
-                    key_para = float(key_para)
-                    move_to_rel(x=math.floor(key_para * ACCEL_COEFFICIENT + SCREEN_WIDTH / ZOOM_LEVEL / 2))
+            if not is_controlling:
+                continue
 
-                if key_type == "M":  # 鼠标移动
-                    pydirectinput.moveRel(xOffset=math.floor(-float(key_para) * SENSITIVITY / 2), yOffset=0, relative=True)
-
-                if key_type == "K":  # 键盘事件
-                    for i,j in enumerate(str(key_para)):
-                        if j == '1' and current_keys_state[i] == 0:
-                            pydirectinput.keyDown(keys_table[i])
-                            current_keys_state[i] = 1
-                        elif j == '0' and current_keys_state[i] == 1:
-                            pydirectinput.keyUp(keys_table[i])
-                            current_keys_state[i] = 0
-
+            if key_type == "RESET":
+                move_to_midpoint()
+            elif key_type == "A":
+                queue_accel_target(float(key_para))
+            elif key_type == "M":
+                apply_gyro(float(key_para))
+            elif key_type == "K":
+                for i, state in enumerate(str(key_para)):
+                    if i >= len(current_keys_state):
+                        break
+                    if state == "1" and current_keys_state[i] == 0:
+                        pydirectinput.keyDown(keys_table[i])
+                        current_keys_state[i] = 1
+                    elif state == "0" and current_keys_state[i] == 1:
+                        pydirectinput.keyUp(keys_table[i])
+                        current_keys_state[i] = 0
         except socket.timeout:
             continue
 except KeyboardInterrupt:
-    print("\n[退出] 正在关闭...")
+    log("Shutting down")
+finally:
     move_stop_event.set()
     move_target_event.set()
     move_thread.join(timeout=0.2)
     listener.stop()
+    sock.close()
