@@ -1,0 +1,8 @@
+udp_ip = "0.0.0.0"
+udp_port = 5005
+sensitivity = 1
+screen_width = 2880
+zoom_level = 2
+angle_dead_zone = 0.05
+max_rel_step = 8
+interpolation_sleep = 0.005

@@ -4,19 +4,25 @@ import pydirectinput
 import threading
 import time
 from pynput import keyboard
+try:
+    import tomllib
+except:
+    import tomli as tomllib
 
-# 配置
-UDP_IP = "0.0.0.0"
-UDP_PORT = 5005
-SENSITIVITY = 1
-SCREEN_WIDTH = 2880
-SCREEN_WIDTH = 1920
-ZOOM_LEVEL = 2
-ANGLE_DEAD_ZONE = 0.05
+with open('server-config.toml', 'rb') as f:
+    config = tomllib.load(f)
+
+UDP_IP = config.get("udp_ip", "0.0.0.0")
+UDP_PORT = config.get("udp_port", 5005)
+SENSITIVITY = config.get("sensitivity", 1)
+SCREEN_WIDTH = config.get("screen_width", 2880)
+ZOOM_LEVEL = config.get("zoom_level", 2)
+ANGLE_DEAD_ZONE = config.get("angle_dead_zone", 0.05)
+MAX_REL_STEP = config.get("max_rel_step", 8)
+INTERPOLATION_SLEEP = config.get("interpolation_sleep", 0.005)
+
 ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
 MIDPOINT = SCREEN_WIDTH // ZOOM_LEVEL // 2
-MAX_REL_STEP = 8
-INTERPOLATION_SLEEP = 0.005
  
 # 状态变量
 current_x = MIDPOINT
