@@ -1,8 +1,18 @@
+# UDP Connection Settings
 udp_ip = "0.0.0.0"
 udp_port = 5005
-sensitivity = 1
+
+# Sensitivity and Scaling
+sensitivity = 1.0
 screen_width = 2880
 zoom_level = 2
 angle_dead_zone = 0.05
-max_rel_step = 8
+
+# Timing and Interpolation
 interpolation_sleep = 0.005
+
+# Acceleration Settings
+accel_interpolation_steps = 3
+accel_zero_g = 0.0
+accel_filter_alpha = 0.35
+accel_target_hysteresis_steps = 1
