@@ -16,3 +16,4 @@ local.properties
 .idea
 
 server-config.toml
+__pycache__
