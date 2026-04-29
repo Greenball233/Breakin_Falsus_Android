@@ -3,8 +3,10 @@ package moe.zl.breakinfalsus;
 import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
 
+import android.Manifest;
 import android.app.ActivityManager;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -17,6 +19,7 @@ import android.widget.Toast;
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -30,18 +33,23 @@ import java.util.Locale;
 
 import moe.zl.breakinfalsus.input.SensorMouseController;
 import moe.zl.breakinfalsus.input.SixKeyTouchLayout;
+import moe.zl.breakinfalsus.output.BluetoothHidOutputTransport;
 import moe.zl.breakinfalsus.output.OutputTransport;
 import moe.zl.breakinfalsus.output.RootHidOutputTransport;
+import moe.zl.breakinfalsus.output.TcpOutputTransport;
 import moe.zl.breakinfalsus.output.UdpOutputTransport;
 
 public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout.OnKeyStateChangeListener {
     private static final String MODE_UDP = "UDP";
+    private static final String MODE_TCP = "TCP";
     private static final String MODE_HID = "ROOT_HID";
+    private static final String MODE_BT_HID = "BT_HID";
     private static final String SENSOR_ACCEL = "ACCEL";
     private static final String SENSOR_GYRO = "GYRO";
     private static final String PREFS_NAME = "controller_prefs";
     private static final String PREF_HOST = "host";
     private static final String PREF_PORT = "port";
+    private static final String PREF_BLUETOOTH_DEVICE = "bluetooth_device";
     private static final String PREF_KEYBOARD_HID = "keyboard_hid";
     private static final String PREF_MOUSE_HID = "mouse_hid";
     private static final String PREF_KEYBOARD_OUTPUT = "keyboard_output";
@@ -55,11 +63,13 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private static final String PREF_PANEL_HIDDEN = "panel_hidden";
     private static final long PANEL_ANIMATION_DURATION_MS = 200L;
     private static final int ACCEL_MOVE_STEPS = 3;
+    private static final int REQUEST_BT_PERMISSIONS = 1001;
 
     private SixKeyTouchLayout touchPad;
     private SensorMouseController sensorMouseController;
     private TextInputEditText hostInput;
     private TextInputEditText portInput;
+    private TextInputEditText bluetoothDeviceInput;
     private TextInputEditText keyboardHidInput;
     private TextInputEditText mouseHidInput;
     private Spinner keyboardOutputSpinner;
@@ -132,6 +142,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         topBar = findViewById(R.id.topBar);
         hostInput = findViewById(R.id.hostInput);
         portInput = findViewById(R.id.portInput);
+        bluetoothDeviceInput = findViewById(R.id.bluetoothDeviceInput);
         keyboardHidInput = findViewById(R.id.keyboardHidInput);
         mouseHidInput = findViewById(R.id.mouseHidInput);
         keyboardOutputSpinner = findViewById(R.id.keyboardOutputSpinner);
@@ -151,7 +162,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     }
 
     private void setupDropdowns() {
-        outputModes = new String[]{MODE_UDP, MODE_HID};
+        outputModes = new String[]{MODE_UDP, MODE_TCP, MODE_HID, MODE_BT_HID};
         sensorModes = new String[]{SENSOR_GYRO, SENSOR_ACCEL};
         ArrayAdapter<String> outputAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, outputModes);
         outputAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -202,6 +213,9 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     }
 
     private void applyConfiguration() {
+        if (needsBluetoothPermissions() && !ensureBluetoothPermissions()) {
+            return;
+        }
         closeTransport(keyboardTransport);
         closeTransport(mouseTransport);
         keyboardTransport = buildTransport(getSelectedOutputMode(keyboardOutputSpinner));
@@ -220,11 +234,9 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
             mouseTransport.sendAccelerometerCalibration(sensorMouseController.getAccelerometerZero());
         }
         updateStatus("Configuration applied");
-        if (mouseTransport instanceof UdpOutputTransport) {
+        if (mouseTransport != null && mouseTransport.supportsReset()) {
             resetButton.setVisibility(VISIBLE);
-            resetButton.setOnClickListener((View v)->{
-                ((UdpOutputTransport) mouseTransport).send("RESET|0");
-            });
+            resetButton.setOnClickListener((View v) -> mouseTransport.sendReset());
         } else {
             resetButton.setVisibility(INVISIBLE);
         }
@@ -299,6 +311,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private void restorePreferences() {
         hostInput.setText(preferences.getString(PREF_HOST, "192.168.0.2"));
         portInput.setText(preferences.getString(PREF_PORT, "9527"));
+        bluetoothDeviceInput.setText(preferences.getString(PREF_BLUETOOTH_DEVICE, ""));
         keyboardHidInput.setText(preferences.getString(PREF_KEYBOARD_HID, "/dev/hidg0"));
         mouseHidInput.setText(preferences.getString(PREF_MOUSE_HID, "/dev/hidg1"));
         sensitivitySlider.setValue(preferences.getFloat(PREF_SENSITIVITY, 20f));
@@ -316,6 +329,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         preferences.edit()
                 .putString(PREF_HOST, getText(hostInput))
                 .putString(PREF_PORT, getText(portInput))
+                .putString(PREF_BLUETOOTH_DEVICE, getText(bluetoothDeviceInput))
                 .putString(PREF_KEYBOARD_HID, getText(keyboardHidInput))
                 .putString(PREF_MOUSE_HID, getText(mouseHidInput))
                 .putString(PREF_KEYBOARD_OUTPUT, getSelectedOutputMode(keyboardOutputSpinner))
@@ -359,6 +373,13 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     }
 
     private OutputTransport buildTransport(@NonNull String mode) {
+        if (MODE_BT_HID.equalsIgnoreCase(mode)) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                Toast.makeText(this, R.string.bluetooth_hid_requires_android_p, Toast.LENGTH_SHORT).show();
+                return null;
+            }
+            return new BluetoothHidOutputTransport(this, getText(bluetoothDeviceInput));
+        }
         if (MODE_HID.equalsIgnoreCase(mode)) {
             String keyboardPath = getText(keyboardHidInput).isEmpty() ? "/dev/hidg0" : getText(keyboardHidInput);
             String mousePath = getText(mouseHidInput).isEmpty() ? "/dev/hidg1" : getText(mouseHidInput);
@@ -371,10 +392,38 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
             try {
                 port = Integer.parseInt(portString);
             } catch (NumberFormatException ignored) {
-                Toast.makeText(this, "Invalid port, fallback to 9527", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.invalid_port_fallback, Toast.LENGTH_SHORT).show();
             }
         }
+        if (MODE_TCP.equalsIgnoreCase(mode)) {
+            return new TcpOutputTransport(host, port);
+        }
         return new UdpOutputTransport(host, port);
+    }
+
+    private boolean needsBluetoothPermissions() {
+        return MODE_BT_HID.equalsIgnoreCase(getSelectedOutputMode(keyboardOutputSpinner))
+                || MODE_BT_HID.equalsIgnoreCase(getSelectedOutputMode(mouseOutputSpinner));
+    }
+
+    private boolean ensureBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return true;
+        }
+        boolean hasConnect = ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
+        boolean hasAdvertise = ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE)
+                == PackageManager.PERMISSION_GRANTED;
+        if (hasConnect && hasAdvertise) {
+            return true;
+        }
+        ActivityCompat.requestPermissions(
+                this,
+                new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE},
+                REQUEST_BT_PERMISSIONS
+        );
+        Toast.makeText(this, R.string.bluetooth_permission_required, Toast.LENGTH_SHORT).show();
+        return false;
     }
 
     private void updateStatus(@NonNull String message) {
@@ -424,6 +473,27 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         super.onDestroy();
         closeTransport(keyboardTransport);
         closeTransport(mouseTransport);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_BT_PERMISSIONS) {
+            return;
+        }
+        boolean granted = true;
+        for (int grantResult : grantResults) {
+            if (grantResult != PackageManager.PERMISSION_GRANTED) {
+                granted = false;
+                break;
+            }
+        }
+        if (granted) {
+            applyConfiguration();
+            savePreferences();
+        } else {
+            updateStatus(getString(R.string.bluetooth_permission_required));
+        }
     }
 
     private void toggleLockTaskMode() {

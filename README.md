@@ -1,20 +1,24 @@
 # Breakin Falsus
 
-Breakin Falsus is a landscape Android rhythm-game controller written in Java. It turns a phone into a six-key touch controller plus a motion mouse bridge, then forwards input to a PC through UDP packets or root HID gadget output.
+Breakin Falsus is a landscape Android rhythm-game controller written in Java. It turns a phone into a six-key touch controller plus a motion mouse bridge, then forwards input to a PC through UDP or TCP packets, root HID gadget output, or Bluetooth HID device mode.
 
 ## Features
 
 - Six-key fullscreen touch input with multi-touch state aggregation
 - Keyboard output modes:
   - UDP packet: `K|000000`
+  - TCP line packet: `K|000000\n`
   - Root HID keyboard report
+  - Bluetooth HID keyboard report
 - Mouse input modes:
   - Accelerometer with sensitivity and deadzone
   - Gyroscope Z-axis with sensitivity and deadzone
 - Mouse output modes:
   - UDP packet for accelerometer: `A|{float}`
   - UDP packet for gyroscope: `M|{int}`
+  - TCP packet for accelerometer / gyroscope with the same payload format
   - Root HID mouse movement report
+  - Bluetooth HID relative mouse report
 - Landscape-only controller UI
 - Collapsible settings panel with animated hide on `Apply`
 - Persistent configuration with automatic restore on next launch
@@ -45,10 +49,11 @@ Touch states are collected from the parent fullscreen control and sent as one co
 ### Keyboard output
 
 - UDP format: `K|000000`
+- TCP format: `K|000000\n`
   - `0` means released
   - `1` means pressed
   - digits 1 through 6 map to the six touch zones above
-- HID format:
+- Root HID / Bluetooth HID format:
   - Left Shift is sent as the keyboard modifier bit
   - `A`, `S`, `D`, `F`, `Space` are sent as standard HID keycodes
 
@@ -62,7 +67,19 @@ Touch states are collected from the parent fullscreen control and sent as one co
 
 - UDP accelerometer format: `A|{Value}`
 - UDP gyroscope format: `M|{Value}`
-- HID mouse output sends relative movement reports
+- TCP accelerometer format: `A|{Value}`
+- TCP gyroscope format: `M|{Value}`
+- Root HID and Bluetooth HID mouse output send relative movement reports
+
+## TCP receiver notes
+
+`main-server.py` now listens on both UDP and TCP using the same message protocol. TCP uses newline-delimited frames, for example:
+
+```text
+K|010000
+A|0.125
+P|1
+```
 
 ## Building locally
 
@@ -102,6 +119,15 @@ For HID mode, the target Android device must:
 - expose writable HID gadget device files such as `/dev/hidg0` and `/dev/hidg1`
 
 The app uses `libsu` `SuFile` output streams to write HID reports.
+
+## Bluetooth HID notes
+
+For `BT_HID` mode, the Android phone acts as a Bluetooth HID combo device.
+
+- Android 9 or newer is recommended for `BluetoothHidDevice`
+- the phone must grant `BLUETOOTH_CONNECT` and `BLUETOOTH_ADVERTISE`
+- the target host should already be paired with the phone
+- enter the host MAC address in the new `Bluetooth Host MAC` field before applying the config
 
 ## Current assumptions
 

@@ -14,5 +14,13 @@ public abstract class OutputTransport {
 
     public abstract void sendAccelerometerCalibration(float zeroG);
 
+    public boolean supportsReset() {
+        return false;
+    }
+
+    public void sendReset() {
+        // Optional capability for transports that can recenter the remote cursor.
+    }
+
     public abstract void close();
 }

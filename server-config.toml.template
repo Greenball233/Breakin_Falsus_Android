@@ -2,6 +2,10 @@
 udp_ip = "0.0.0.0"
 udp_port = 5005
 
+# TCP Connection Settings
+tcp_ip = "0.0.0.0"
+tcp_port = 5005
+
 # Sensitivity and Scaling
 sensitivity = 1.0
 screen_width = 2880

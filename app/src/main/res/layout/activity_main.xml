@@ -185,11 +185,26 @@
                     android:layout_marginTop="8dp"
                     android:baselineAligned="false"
                     android:orientation="horizontal">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:hint="@string/bluetooth_device_hint">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/bluetoothDeviceInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textNoSuggestions"
+                            android:text="00:00:00:00:00:00" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:layout_marginStart="8dp"
                         android:layout_weight="1"
                         android:hint="@string/keyboard_hid_hint">
 

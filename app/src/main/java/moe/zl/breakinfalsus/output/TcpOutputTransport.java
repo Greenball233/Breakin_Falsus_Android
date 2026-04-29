@@ -1,20 +1,26 @@
 package moe.zl.breakinfalsus.output;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.io.BufferedWriter;
+import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class UdpOutputTransport extends OutputTransport {
+public class TcpOutputTransport extends OutputTransport {
+
+    private static final int CONNECT_TIMEOUT_MS = 1500;
 
     private final String host;
     private final int port;
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
-    public UdpOutputTransport(String host, int port) {
+    private Socket socket;
+    private BufferedWriter writer;
+
+    public TcpOutputTransport(String host, int port) {
         this.host = host;
         this.port = port;
     }
@@ -43,7 +49,7 @@ public class UdpOutputTransport extends OutputTransport {
 
     @Override
     public void sendMouseMove(int deltaX, int deltaY) {
-        // UDP mode uses semantic A/M packets, so raw mouse HID deltas are ignored here.
+        // TCP mode mirrors the semantic network protocol used by UDP mode.
     }
 
     @Override
@@ -69,20 +75,53 @@ public class UdpOutputTransport extends OutputTransport {
     @Override
     public void close() {
         executorService.shutdownNow();
+        closeSocket();
     }
 
-    public void send(String message) {
+    private void send(String message) {
         if (host == null || host.trim().isEmpty() || port <= 0) {
             return;
         }
         executorService.execute(() -> {
-            try (DatagramSocket socket = new DatagramSocket()) {
-                byte[] payload = message.getBytes(StandardCharsets.UTF_8);
-                DatagramPacket packet = new DatagramPacket(payload, payload.length, InetAddress.getByName(host), port);
-                socket.send(packet);
+            try {
+                ensureConnected();
+                if (writer == null) {
+                    return;
+                }
+                writer.write(message);
+                writer.write('\n');
+                writer.flush();
             } catch (Exception ignored) {
-                // Intentionally ignored to avoid crashing the controller loop.
+                closeSocket();
             }
         });
+    }
+
+    private void ensureConnected() throws Exception {
+        if (socket != null && socket.isConnected() && !socket.isClosed()) {
+            return;
+        }
+        closeSocket();
+        Socket newSocket = new Socket();
+        newSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+        socket = newSocket;
+        writer = new BufferedWriter(new OutputStreamWriter(newSocket.getOutputStream(), StandardCharsets.UTF_8));
+    }
+
+    private synchronized void closeSocket() {
+        try {
+            if (writer != null) {
+                writer.close();
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (socket != null) {
+                socket.close();
+            }
+        } catch (Exception ignored) {
+        }
+        writer = null;
+        socket = null;
     }
 }

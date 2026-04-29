@@ -17,6 +17,8 @@ CONFIG_PATH = Path("server-config.toml")
 DEFAULT_CONFIG = {
     "udp_ip": "0.0.0.0",
     "udp_port": 5005,
+    "tcp_ip": "0.0.0.0",
+    "tcp_port": 5005,
     "sensitivity": 1.0,
     "screen_width": 2880,
     "zoom_level": 2,
@@ -60,6 +62,8 @@ if not CONFIG_PATH.exists():
 
 UDP_IP = config["udp_ip"]
 UDP_PORT = int(config["udp_port"])
+TCP_IP = config.get("tcp_ip", UDP_IP)
+TCP_PORT = int(config.get("tcp_port", UDP_PORT))
 SENSITIVITY = float(config["sensitivity"])
 SCREEN_WIDTH = int(config["screen_width"])
 ZOOM_LEVEL = int(config["zoom_level"])
@@ -93,6 +97,7 @@ move_steps_remaining = 0
 move_target_lock = threading.Lock()
 move_target_event = threading.Event()
 move_stop_event = threading.Event()
+server_stop_event = threading.Event()
 
 
 def log(message):
@@ -204,6 +209,86 @@ def apply_gyro(raw_value):
         pydirectinput.moveRel(xOffset=hid_delta, yOffset=0, relative=True)
 
 
+def handle_message(message):
+    raw_msg = message.decode().split("|", 1)
+    if len(raw_msg) != 2:
+        return
+
+    key_type = raw_msg[0]
+    key_para = raw_msg[1]
+
+    if key_type == "AZ":
+        set_accel_zero(float(key_para))
+        return
+    if key_type == "P":
+        send_pause_key()
+        return
+
+    if not is_controlling:
+        return
+
+    if key_type == "RESET":
+        move_to_midpoint()
+    elif key_type == "A":
+        queue_accel_target(float(key_para))
+    elif key_type == "M":
+        apply_gyro(float(key_para))
+    elif key_type == "K":
+        for i, state in enumerate(str(key_para)):
+            if i >= len(current_keys_state):
+                break
+            if state == "1" and current_keys_state[i] == 0:
+                pydirectinput.keyDown(keys_table[i])
+                current_keys_state[i] = 1
+            elif state == "0" and current_keys_state[i] == 1:
+                pydirectinput.keyUp(keys_table[i])
+                current_keys_state[i] = 0
+
+
+def tcp_client_worker(client_socket, client_addr):
+    log(f"TCP client connected {client_addr[0]}:{client_addr[1]}")
+    buffer = ""
+    try:
+        client_socket.settimeout(0.1)
+        while not server_stop_event.is_set():
+            try:
+                chunk = client_socket.recv(1024)
+                if not chunk:
+                    break
+                buffer += chunk.decode()
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    line = line.strip()
+                    if line:
+                        handle_message(line.encode())
+            except socket.timeout:
+                continue
+    except OSError:
+        pass
+    finally:
+        client_socket.close()
+        log(f"TCP client disconnected {client_addr[0]}:{client_addr[1]}")
+
+
+def tcp_server_worker(server_socket):
+    log(f"TCP receiver listening on {TCP_IP}:{TCP_PORT}")
+    server_socket.settimeout(0.1)
+    while not server_stop_event.is_set():
+        try:
+            client_socket, client_addr = server_socket.accept()
+            worker = threading.Thread(
+                target=tcp_client_worker,
+                args=(client_socket, client_addr),
+                name=f"tcp-client-{client_addr[0]}:{client_addr[1]}",
+                daemon=True,
+            )
+            worker.start()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+
+
 listener = keyboard.Listener(on_press=on_press)
 listener.start()
 
@@ -214,56 +299,35 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, UDP_PORT))
 sock.settimeout(0.1)
 
+tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+tcp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+tcp_server_socket.bind((TCP_IP, TCP_PORT))
+tcp_server_socket.listen()
+
+tcp_server_thread = threading.Thread(target=tcp_server_worker, args=(tcp_server_socket,), name="tcp-server", daemon=True)
+tcp_server_thread.start()
+
 log("Receiver started")
 log(
-    "port=%d sensitivity=%.3f accel_steps=%d accel_zero=%.5f"
-    % (UDP_PORT, SENSITIVITY, ACCEL_INTERPOLATION_STEPS, accel_zero_g)
+    "udp=%s:%d tcp=%s:%d sensitivity=%.3f accel_steps=%d accel_zero=%.5f"
+    % (UDP_IP, UDP_PORT, TCP_IP, TCP_PORT, SENSITIVITY, ACCEL_INTERPOLATION_STEPS, accel_zero_g)
 )
 
 try:
     while True:
         try:
             data, addr = sock.recvfrom(1024)
-            raw_msg = data.decode().split("|", 1)
-            if len(raw_msg) != 2:
-                continue
-
-            key_type = raw_msg[0]
-            key_para = raw_msg[1]
-
-            if key_type == "AZ":
-                set_accel_zero(float(key_para))
-                continue
-            if key_type == "P":
-                send_pause_key()
-                continue
-
-            if not is_controlling:
-                continue
-
-            if key_type == "RESET":
-                move_to_midpoint()
-            elif key_type == "A":
-                queue_accel_target(float(key_para))
-            elif key_type == "M":
-                apply_gyro(float(key_para))
-            elif key_type == "K":
-                for i, state in enumerate(str(key_para)):
-                    if i >= len(current_keys_state):
-                        break
-                    if state == "1" and current_keys_state[i] == 0:
-                        pydirectinput.keyDown(keys_table[i])
-                        current_keys_state[i] = 1
-                    elif state == "0" and current_keys_state[i] == 1:
-                        pydirectinput.keyUp(keys_table[i])
-                        current_keys_state[i] = 0
+            handle_message(data)
         except socket.timeout:
             continue
 except KeyboardInterrupt:
     log("Shutting down")
 finally:
+    server_stop_event.set()
     move_stop_event.set()
     move_target_event.set()
     move_thread.join(timeout=0.2)
+    tcp_server_socket.close()
+    tcp_server_thread.join(timeout=0.2)
     listener.stop()
     sock.close()

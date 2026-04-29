@@ -1,9 +1,10 @@
 <resources>
     <string name="app_name">Breakin Falsus</string>
-    <string name="host_hint">UDP Host</string>
-    <string name="port_hint">UDP Port</string>
+    <string name="host_hint">Network Host</string>
+    <string name="port_hint">Network Port</string>
     <string name="keyboard_hid_hint">Keyboard HID Path</string>
     <string name="mouse_hid_hint">Mouse HID Path</string>
+    <string name="bluetooth_device_hint">Bluetooth Host MAC</string>
     <string name="apply_config">Apply</string>
     <string name="keyboard_output_label">Keyboard Output</string>
     <string name="mouse_output_label">Mouse Output</string>
@@ -20,4 +21,7 @@
     <string name="lock_task_btn">Lock Nav</string>
     <string name="unlock_task_btn">Unlock Nav</string>
     <string name="show_motion_log">Show Motion Event Logs</string>
+    <string name="bluetooth_permission_required">Bluetooth permission is required for BT_HID mode</string>
+    <string name="bluetooth_hid_requires_android_p">BT_HID mode requires Android 9 or newer</string>
+    <string name="invalid_port_fallback">Invalid port, fallback to 9527</string>
 </resources>
