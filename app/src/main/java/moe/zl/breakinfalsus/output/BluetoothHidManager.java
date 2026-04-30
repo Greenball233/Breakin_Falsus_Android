@@ -14,6 +14,8 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
+import androidx.annotation.RequiresPermission;
 import androidx.core.content.ContextCompat;
 
 import java.util.concurrent.Executor;
@@ -90,6 +92,7 @@ final class BluetoothHidManager {
     private static final Executor EXECUTOR = Executors.newSingleThreadExecutor();
     private static BluetoothHidManager instance;
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
     static synchronized BluetoothHidManager getInstance(Context context) {
         if (instance == null) {
             instance = new BluetoothHidManager(context.getApplicationContext());
@@ -99,6 +102,8 @@ final class BluetoothHidManager {
 
     private final Context appContext;
     private final BluetoothProfile.ServiceListener serviceListener = new BluetoothProfile.ServiceListener() {
+        @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+        @RequiresApi(api = Build.VERSION_CODES.P)
         @Override
         public void onServiceConnected(int profile, BluetoothProfile proxy) {
             if (profile == BluetoothProfile.HID_DEVICE) {
@@ -117,27 +122,7 @@ final class BluetoothHidManager {
         }
     };
 
-    private final BluetoothHidDevice.Callback callback = new BluetoothHidDevice.Callback() {
-        @Override
-        public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean registered) {
-            BluetoothHidManager.this.registered = registered;
-            if (pluggedDevice != null) {
-                connectedDevice = pluggedDevice;
-            }
-            if (registered) {
-                connectIfPossible();
-            }
-        }
-
-        @Override
-        public void onConnectionStateChanged(BluetoothDevice device, int state) {
-            if (state == BluetoothProfile.STATE_CONNECTED) {
-                connectedDevice = device;
-            } else if (device != null && device.equals(connectedDevice)) {
-                connectedDevice = null;
-            }
-        }
-    };
+    private final BluetoothHidDevice.Callback callback;
 
     private BluetoothHidDevice hidDevice;
     private BluetoothDevice targetDevice;
@@ -145,16 +130,43 @@ final class BluetoothHidManager {
     private boolean registered;
     private int refCount;
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
     private BluetoothHidManager(Context appContext) {
         this.appContext = appContext;
+        callback = new BluetoothHidDevice.Callback() {
+            @RequiresApi(api = Build.VERSION_CODES.P)
+            @Override
+            public void onAppStatusChanged(BluetoothDevice pluggedDevice, boolean registered) {
+                BluetoothHidManager.this.registered = registered;
+                if (pluggedDevice != null) {
+                    connectedDevice = pluggedDevice;
+                }
+                if (registered) {
+                    connectIfPossible();
+                }
+            }
+
+            @Override
+            public void onConnectionStateChanged(BluetoothDevice device, int state) {
+                if (state == BluetoothProfile.STATE_CONNECTED) {
+                    connectedDevice = device;
+                } else if (device != null && device.equals(connectedDevice)) {
+                    connectedDevice = null;
+                }
+            }
+        };
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     synchronized void acquire(String deviceAddress) {
         refCount++;
         targetDevice = resolveBondedDevice(deviceAddress);
         ensureProxy();
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     synchronized void release() {
         refCount = Math.max(0, refCount - 1);
         if (refCount == 0) {
@@ -170,6 +182,8 @@ final class BluetoothHidManager {
         }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     synchronized void sendKeyboardState(boolean[] keyStates) {
         if (keyStates == null || keyStates.length != 6) {
             return;
@@ -187,6 +201,8 @@ final class BluetoothHidManager {
         sendReport(REPORT_ID_KEYBOARD, report);
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     synchronized void sendMouseMove(int deltaX, int deltaY) {
         byte[] report = new byte[]{
                 0x00,
@@ -197,6 +213,8 @@ final class BluetoothHidManager {
         sendReport(REPORT_ID_MOUSE, report);
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     synchronized void sendPauseToggle() {
         byte[] pressed = new byte[8];
         pressed[2] = 0x29;
@@ -204,6 +222,8 @@ final class BluetoothHidManager {
         sendReport(REPORT_ID_KEYBOARD, new byte[8]);
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     private void sendReport(byte reportId, byte[] report) {
         if (!hasConnectPermission()) {
             return;
@@ -216,10 +236,13 @@ final class BluetoothHidManager {
         }
         try {
             hidDevice.sendReport(device, reportId, report);
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            Toast.makeText(appContext, exception.toString(), Toast.LENGTH_SHORT).show();
         }
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     private void ensureProxy() {
         if (!hasConnectPermission()) {
             return;
@@ -232,6 +255,8 @@ final class BluetoothHidManager {
         adapter.getProfileProxy(appContext, serviceListener, BluetoothProfile.HID_DEVICE);
     }
 
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @RequiresApi(api = Build.VERSION_CODES.P)
     private void registerAppIfReady() {
         if (!hasConnectPermission()) {
             return;
@@ -254,6 +279,7 @@ final class BluetoothHidManager {
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.P)
     @SuppressLint("MissingPermission")
     private void connectIfPossible() {
         if (!hasConnectPermission()) {
@@ -275,7 +301,7 @@ final class BluetoothHidManager {
     private BluetoothDevice resolveBondedDevice(String deviceAddress) {
         if (!hasConnectPermission()) {
             return null;
-        }  
+        }
         if (deviceAddress == null || deviceAddress.trim().isEmpty()) {
             return null;
         }
