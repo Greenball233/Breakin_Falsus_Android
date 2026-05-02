@@ -18,6 +18,7 @@ import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresPermission;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.graphics.Insets;
@@ -29,6 +30,7 @@ import com.google.android.material.slider.Slider;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 
+import java.util.ArrayList;
 import java.util.Locale;
 
 import moe.zl.breakinfalsus.input.SensorMouseController;
@@ -52,6 +54,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private static final String PREF_BLUETOOTH_DEVICE = "bluetooth_device";
     private static final String PREF_KEYBOARD_HID = "keyboard_hid";
     private static final String PREF_MOUSE_HID = "mouse_hid";
+    private static final String PREF_CARD_COLORS = "card_colors";
     private static final String PREF_KEYBOARD_OUTPUT = "keyboard_output";
     private static final String PREF_MOUSE_OUTPUT = "mouse_output";
     private static final String PREF_SENSOR_MODE = "sensor_mode";
@@ -72,6 +75,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private TextInputEditText bluetoothDeviceInput;
     private TextInputEditText keyboardHidInput;
     private TextInputEditText mouseHidInput;
+    private TextInputEditText cardColorsInput;
     private Spinner keyboardOutputSpinner;
     private Spinner mouseOutputSpinner;
     private Spinner sensorModeSpinner;
@@ -145,6 +149,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         bluetoothDeviceInput = findViewById(R.id.bluetoothDeviceInput);
         keyboardHidInput = findViewById(R.id.keyboardHidInput);
         mouseHidInput = findViewById(R.id.mouseHidInput);
+        cardColorsInput = findViewById(R.id.cardColorView);
         keyboardOutputSpinner = findViewById(R.id.keyboardOutputSpinner);
         mouseOutputSpinner = findViewById(R.id.mouseOutputSpinner);
         sensorModeSpinner = findViewById(R.id.sensorModeSpinner);
@@ -233,6 +238,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         if (mouseTransport != null) {
             mouseTransport.sendAccelerometerCalibration(sensorMouseController.getAccelerometerZero());
         }
+        touchPad.setCardColor(convertArrayToColors(getText(cardColorsInput)));
         updateStatus("Configuration applied");
         if (mouseTransport != null && mouseTransport.supportsReset()) {
             resetButton.setVisibility(VISIBLE);
@@ -314,6 +320,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         bluetoothDeviceInput.setText(preferences.getString(PREF_BLUETOOTH_DEVICE, ""));
         keyboardHidInput.setText(preferences.getString(PREF_KEYBOARD_HID, "/dev/hidg0"));
         mouseHidInput.setText(preferences.getString(PREF_MOUSE_HID, "/dev/hidg1"));
+        cardColorsInput.setText(preferences.getString(PREF_CARD_COLORS, "0x0cd4d4;0x1f1e33;0xe0e1cc;0xe0e1cc;0x1f1e33;0xff96dc"));
         sensitivitySlider.setValue(preferences.getFloat(PREF_SENSITIVITY, 20f));
         deadzoneSlider.setValue(preferences.getFloat(PREF_DEADZONE, 0.05f));
         sensorMouseController.setAccelerometerZero(preferences.getFloat(PREF_ACCEL_ZERO_G, 0f));
@@ -341,6 +348,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                 .putFloat(PREF_CHORD_BUFFER, chordBufferSlider.getValue())
                 .putBoolean(PREF_MOTION_LOG_ENABLED, motionLogsSwitch.isChecked())
                 .putBoolean(PREF_PANEL_HIDDEN, true)
+                .putString(PREF_CARD_COLORS, getText(cardColorsInput))
                 .apply();
     }
 
@@ -366,6 +374,29 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
 
     private String getText(@NonNull TextInputEditText editText) {
         return editText.getText() == null ? "" : editText.getText().toString().trim();
+    }
+
+    private int[] convertArrayToColors(@NonNull String str) {
+        ArrayList<Integer> list = new ArrayList<>();
+        String[] strings = str.split(";");
+        for (String s :
+                strings) {
+            if (s != null && !s.trim().isEmpty()) {
+                String a = s.trim();
+                if (a.startsWith("0x") || a.startsWith("0X")) a = a.substring(2);
+                try {
+                    list.add(Integer.parseUnsignedInt(a, 16));
+                } catch (NumberFormatException e) {
+                    System.err.println(e);
+                    return new int[0];
+                }
+            }
+        }
+        int[] result = new int[list.size()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = list.get(i);
+        }
+        return result;
     }
 
     private int dp(int value) {

@@ -24,4 +24,5 @@
     <string name="bluetooth_permission_required">Bluetooth permission is required for BT_HID mode</string>
     <string name="bluetooth_hid_requires_android_p">BT_HID mode requires Android 9 or newer</string>
     <string name="invalid_port_fallback">Invalid port, fallback to 9527</string>
+    <string name="card_colors">Card Colors</string>
 </resources>

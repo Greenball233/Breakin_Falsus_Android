@@ -5,6 +5,7 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -20,10 +21,12 @@ public class SixKeyTouchLayout extends FrameLayout {
 
     private static final String[] KEY_LABELS = new String[]{"Shift", "A", "S", "D", "F", "Space"};
     private final MaterialCardView[] keyViews = new MaterialCardView[6];
+//    private final ImageView[] keyBgViews = new ImageView[6];
     private final boolean[] keyStates = new boolean[6];
     private OnKeyStateChangeListener listener;
-    private final int idleCardColor = 0x661f1e33;
-    private final int pressedCardColor = 0xff1f1e33;
+    private final int idleCardAlpha = 0x66000000;
+    private final int pressedCardAlpha = 0xff000000;
+    private int[] cardColors = {0x001f1e33, 0x001f1e33, 0x001f1e33, 0x001f1e33, 0x001f1e33, 0x001f1e33};
     private TextView logt;
     private boolean motionLogEnabled;
     private float chordBufferPx;
@@ -50,10 +53,10 @@ public class SixKeyTouchLayout extends FrameLayout {
         chordBufferPx = dp(12);
         for (int i = 0; i < keyViews.length; i++) {
             MaterialCardView keyView = new MaterialCardView(context);
-            keyView.setCardBackgroundColor(idleCardColor);
+            keyView.setCardBackgroundColor(idleCardAlpha | cardColors[i]);
             keyView.setRadius(dp(24));
             keyView.setStrokeWidth(dp(2));
-            keyView.setStrokeColor(0x881f1e33);
+            keyView.setStrokeColor(0x88000000 | cardColors[i]);
             keyViews[i] = keyView;
             addView(keyView);
         }
@@ -81,6 +84,16 @@ public class SixKeyTouchLayout extends FrameLayout {
 
     public void setChordBufferDp(float bufferDp) {
         chordBufferPx = Math.max(0f, bufferDp * getResources().getDisplayMetrics().density);
+    }
+
+    public void setCardColor(@NonNull int[] colors) {
+        if (colors.length < cardColors.length) return;
+        if (keyViews[0] == null) return;
+        for (int i = 0; i < cardColors.length; i++) {
+            cardColors[i] = colors[i] & 0x00ffffff;
+            keyViews[i].setCardBackgroundColor(idleCardAlpha | cardColors[i]);
+            keyViews[i].setStrokeColor(0x88000000 | cardColors[i]);
+        }
     }
 
     @Override
@@ -129,7 +142,7 @@ public class SixKeyTouchLayout extends FrameLayout {
                 keyStates[i] = nextStates[i];
                 changed = true;
             }
-            keyViews[i].setCardBackgroundColor(keyStates[i] ? pressedCardColor : idleCardColor);
+            keyViews[i].setCardBackgroundColor((keyStates[i] ? pressedCardAlpha : idleCardAlpha) | cardColors[i]);
         }
         return changed;
     }
