@@ -48,6 +48,11 @@ public class TcpOutputTransport extends OutputTransport {
     }
 
     @Override
+    public void sendGravity(float value) {
+        send(String.format(Locale.US, "G|%s", value));
+    }
+
+    @Override
     public void sendMouseMove(int deltaX, int deltaY) {
         // TCP mode mirrors the semantic network protocol used by UDP mode.
     }

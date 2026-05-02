@@ -46,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
     private static final String MODE_TCP = "TCP";
     private static final String MODE_HID = "ROOT_HID";
     private static final String MODE_BT_HID = "BT_HID";
+    private static final String SENSOR_GRAVITY = "GRAVITY";
     private static final String SENSOR_ACCEL = "ACCEL";
     private static final String SENSOR_GYRO = "GYRO";
     private static final String PREFS_NAME = "controller_prefs";
@@ -131,6 +132,16 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
                         mouseTransport.sendMouseMove(hidDelta, 0);
                         updateStatus(String.format(Locale.US, "Gyro %.3f -> %d", value, hidDelta));
                     }
+
+                    @Override
+                    public void onGravityValue(float value, int hidDelta) {
+                        if (mouseTransport == null) {
+                            return;
+                        }
+                        mouseTransport.sendGravity(value);
+                        sendInterpolatedMouseMove(mouseTransport, hidDelta, ACCEL_MOVE_STEPS);
+                        updateStatus(String.format(Locale.US, "Gravity %.3f -> %d", value, hidDelta));
+                    }
                 }
         );
         setupActions();
@@ -168,7 +179,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
 
     private void setupDropdowns() {
         outputModes = new String[]{MODE_UDP, MODE_TCP, MODE_HID, MODE_BT_HID};
-        sensorModes = new String[]{SENSOR_GYRO, SENSOR_ACCEL};
+        sensorModes = new String[]{SENSOR_GRAVITY, SENSOR_GYRO, SENSOR_ACCEL};
         ArrayAdapter<String> outputAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, outputModes);
         outputAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         ArrayAdapter<String> sensorAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, sensorModes);
@@ -225,11 +236,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         closeTransport(mouseTransport);
         keyboardTransport = buildTransport(getSelectedOutputMode(keyboardOutputSpinner));
         mouseTransport = buildTransport(getSelectedOutputMode(mouseOutputSpinner));
-        sensorMouseController.setMode(
-                SENSOR_ACCEL.equalsIgnoreCase(getSelectedSensorMode())
-                        ? SensorMouseController.Mode.ACCELEROMETER
-                        : SensorMouseController.Mode.GYROSCOPE
-        );
+        sensorMouseController.setMode(getSelectedSensorControllerMode());
         sensorMouseController.setSensitivity(sensitivitySlider.getValue());
         sensorMouseController.setDeadzone(deadzoneSlider.getValue());
         sensorMouseController.setAccelerometerZero(preferences.getFloat(PREF_ACCEL_ZERO_G, 0f));
@@ -328,7 +335,7 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
         motionLogsSwitch.setChecked(preferences.getBoolean(PREF_MOTION_LOG_ENABLED, false));
         setSpinnerSelection(keyboardOutputSpinner, outputModes, preferences.getString(PREF_KEYBOARD_OUTPUT, MODE_UDP));
         setSpinnerSelection(mouseOutputSpinner, outputModes, preferences.getString(PREF_MOUSE_OUTPUT, MODE_UDP));
-        setSpinnerSelection(sensorModeSpinner, sensorModes, preferences.getString(PREF_SENSOR_MODE, SENSOR_GYRO));
+        setSpinnerSelection(sensorModeSpinner, sensorModes, preferences.getString(PREF_SENSOR_MODE, SENSOR_GRAVITY));
         setPanelVisibilityImmediately(preferences.getBoolean(PREF_PANEL_HIDDEN, false));
     }
 
@@ -359,7 +366,18 @@ public class MainActivity extends AppCompatActivity implements SixKeyTouchLayout
 
     private String getSelectedSensorMode() {
         Object value = sensorModeSpinner.getSelectedItem();
-        return value == null ? SENSOR_GYRO : value.toString();
+        return value == null ? SENSOR_GRAVITY : value.toString();
+    }
+
+    private SensorMouseController.Mode getSelectedSensorControllerMode() {
+        String selectedMode = getSelectedSensorMode();
+        if (SENSOR_ACCEL.equalsIgnoreCase(selectedMode)) {
+            return SensorMouseController.Mode.ACCELEROMETER;
+        }
+        if (SENSOR_GYRO.equalsIgnoreCase(selectedMode)) {
+            return SensorMouseController.Mode.GYROSCOPE;
+        }
+        return SensorMouseController.Mode.GRAVITY;
     }
 
     private void setSpinnerSelection(@NonNull Spinner spinner, @NonNull String[] values, @NonNull String wanted) {

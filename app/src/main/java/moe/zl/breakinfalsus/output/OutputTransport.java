@@ -8,6 +8,8 @@ public abstract class OutputTransport {
 
     public abstract void sendGyroscope(float value);
 
+    public abstract void sendGravity(float value);
+
     public abstract void sendMouseMove(int deltaX, int deltaY);
 
     public abstract void sendPauseToggle();

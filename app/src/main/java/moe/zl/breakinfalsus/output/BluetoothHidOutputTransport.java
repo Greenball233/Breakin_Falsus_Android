@@ -27,6 +27,11 @@ public class BluetoothHidOutputTransport extends OutputTransport {
     }
 
     @Override
+    public void sendGravity(float value) {
+        // Bluetooth HID emits motion through relative mouse reports only.
+    }
+
+    @Override
     public void sendMouseMove(int deltaX, int deltaY) {
         manager.sendMouseMove(deltaX, deltaY);
     }

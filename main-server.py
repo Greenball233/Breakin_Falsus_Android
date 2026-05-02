@@ -231,6 +231,8 @@ def handle_message(message):
         move_to_midpoint()
     elif key_type == "A":
         queue_accel_target(float(key_para))
+    elif key_type == "G":
+        queue_accel_target(float(key_para))
     elif key_type == "M":
         apply_gyro(float(key_para))
     elif key_type == "K":

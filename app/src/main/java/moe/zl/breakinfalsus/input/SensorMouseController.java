@@ -14,19 +14,23 @@ public class SensorMouseController implements SensorEventListener {
         void onAccelerometerValue(float value, int hidDelta);
 
         void onGyroscopeValue(float value, int hidDelta);
+
+        void onGravityValue(float value, int hidDelta);
     }
 
     public enum Mode {
         ACCELEROMETER,
-        GYROSCOPE
+        GYROSCOPE,
+        GRAVITY
     }
 
     private final SensorManager sensorManager;
     private final Sensor accelerometer;
     private final Sensor gyroscope;
+    private final Sensor gravity;
     private final MouseSignalListener listener;
 
-    private Mode mode = Mode.GYROSCOPE;
+    private Mode mode = Mode.GRAVITY;
     private float sensitivity = 20f;
     private float deadzone = 0.01f;
     private boolean started;
@@ -34,12 +38,14 @@ public class SensorMouseController implements SensorEventListener {
     private float accelerometerZero;
     private float accelerometerRemainder;
     private float gyroscopeRemainder;
+    private float gravityRemainder;
 
     public SensorMouseController(@NonNull Context context, @NonNull MouseSignalListener listener) {
         this.listener = listener;
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         accelerometer = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         gyroscope = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        gravity = sensorManager == null ? null : sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
     }
 
     public void setMode(@NonNull Mode mode) {
@@ -85,6 +91,7 @@ public class SensorMouseController implements SensorEventListener {
         sensorManager.unregisterListener(this);
         accelerometerRemainder = 0f;
         gyroscopeRemainder = 0f;
+        gravityRemainder = 0f;
     }
 
     private void restartIfNeeded() {
@@ -96,7 +103,14 @@ public class SensorMouseController implements SensorEventListener {
     }
 
     private void registerCurrentSensor() {
-        Sensor sensor = mode == Mode.ACCELEROMETER ? accelerometer : gyroscope;
+        Sensor sensor;
+        if (mode == Mode.ACCELEROMETER) {
+            sensor = accelerometer;
+        } else if (mode == Mode.GYROSCOPE) {
+            sensor = gyroscope;
+        } else {
+            sensor = gravity;
+        }
         if (sensor != null) {
             sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME);
         }
@@ -119,6 +133,15 @@ public class SensorMouseController implements SensorEventListener {
             }
             int hidDelta = clampToMouseDelta(consumeGyroscopeDelta(zValue * sensitivity));
             listener.onGyroscopeValue(event.values[2], hidDelta);
+        } else if (mode == Mode.GRAVITY && event.sensor.getType() == Sensor.TYPE_GRAVITY) {
+            float xValue = event.values[0];
+            float yValue = event.values[1];
+            float angle = (float) Math.atan2(yValue, xValue);
+            if (Math.abs(angle) < deadzone) {
+                angle = 0f;
+            }
+            int hidDelta = clampToMouseDelta(consumeGravityDelta(angle * sensitivity));
+            listener.onGravityValue(angle, hidDelta);
         }
     }
 
@@ -142,6 +165,13 @@ public class SensorMouseController implements SensorEventListener {
         float total = value + gyroscopeRemainder;
         int delta = (int) total;
         gyroscopeRemainder = total - delta;
+        return delta;
+    }
+
+    private int consumeGravityDelta(float value) {
+        float total = value + gravityRemainder;
+        int delta = (int) total;
+        gravityRemainder = total - delta;
         return delta;
     }
 }
