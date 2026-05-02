@@ -19,4 +19,10 @@ server-config.toml
 __pycache__
 
 /venv/
+.env
 app/debug/
+
+*.dist
+*.build
+*.onefile-build
+main-server.exe
