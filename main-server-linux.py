@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from evdev import UInput, ecodes as e
+from evdev import UInput, ecodes as e, AbsInfo
 from pynput import keyboard
 
 try:
@@ -20,7 +20,7 @@ DEFAULT_CONFIG = {
     "tcp_ip": "0.0.0.0",
     "tcp_port": 5005,
 
-    "sensitivity": 1.0,
+    "sensitivity": 40.0,
     "screen_width": 2880,
     "zoom_level": 2,
     "angle_dead_zone": 0.05,
@@ -45,6 +45,9 @@ DEFAULT_CONFIG = {
     # 禁用加速度计自动回中。
     # 某些游戏里如果启用“回中/绝对目标”逻辑，容易不断补偿导致持续向右/向左
     "disable_accel_recenter": True,
+
+    # 是否通过 uinput 输入绝对坐标 (EV_ABS)
+    "use_absolute_uinput": True,
 
     # 是否启用本机 Backspace 热键切换控制
     # 在无桌面、Wayland、权限不足时 pynput 可能不可用，可以关掉
@@ -105,7 +108,12 @@ USE_ABSOLUTE_ACCEL = bool(config.get("use_absolute_accel", False))
 ACCEL_RELATIVE_SENSITIVITY = float(config.get("accel_relative_sensitivity", 1.0))
 MAX_MOUSE_DELTA = max(1, int(config.get("max_mouse_delta", 80)))
 DISABLE_ACCEL_RECENTER = bool(config.get("disable_accel_recenter", True))
+USE_ABSOLUTE_UINPUT = bool(config.get("use_absolute_uinput", False))
 ENABLE_HOTKEY_LISTENER = bool(config.get("enable_hotkey_listener", True))
+
+if USE_ABSOLUTE_UINPUT:
+    USE_ABSOLUTE_ACCEL = True
+    DISABLE_ACCEL_RECENTER = False
 
 ACCEL_COEFFICIENT = SCREEN_WIDTH / 9.8
 MIDPOINT = SCREEN_WIDTH // ZOOM_LEVEL // 2
@@ -117,7 +125,7 @@ gyro_remainder = 0.0
 accel_relative_remainder = 0.0
 
 keys_table = [
-    "shift", "a", "s", "d", "f", "space"
+    "q", "a", "s", "d", "f", "space"
 ]
 current_keys_state = [0] * len(keys_table)
 
@@ -137,7 +145,7 @@ server_stop_event = threading.Event()
 # -----------------------------
 
 KEY_MAP = {
-    "shift": e.KEY_LEFTSHIFT,
+    "q": e.KEY_Q,
     "a": e.KEY_A,
     "s": e.KEY_S,
     "d": e.KEY_D,
@@ -153,7 +161,7 @@ capabilities = {
         e.BTN_RIGHT,
         e.BTN_MIDDLE,
 
-        e.KEY_LEFTSHIFT,
+        e.KEY_Q,
         e.KEY_A,
         e.KEY_S,
         e.KEY_D,
@@ -161,12 +169,21 @@ capabilities = {
         e.KEY_SPACE,
         e.KEY_ESC,
     ],
-    e.EV_REL: [
+}
+
+if USE_ABSOLUTE_UINPUT:
+    capabilities[e.EV_KEY].append(e.BTN_TOUCH)
+    capabilities[e.EV_ABS] = [
+        (e.ABS_X, AbsInfo(value=0, min=0, max=SCREEN_WIDTH, fuzz=0, flat=0, resolution=0)),
+        # Assume a standard full HD height max, or something generic
+        (e.ABS_Y, AbsInfo(value=0, min=0, max=SCREEN_WIDTH, fuzz=0, flat=0, resolution=0)),
+    ]
+else:
+    capabilities[e.EV_REL] = [
         e.REL_X,
         e.REL_Y,
         e.REL_WHEEL,
-    ],
-}
+    ]
 
 ui = UInput(capabilities, name="phone-linux-uinput-controller", version=0x3)
 
@@ -179,17 +196,27 @@ def clamp_mouse_delta(value):
     return int(value)
 
 
+abs_mouse_x = MIDPOINT
+abs_mouse_y = SCREEN_WIDTH // 2
+
 def mouse_move_rel(dx, dy=0):
+    global abs_mouse_x, abs_mouse_y
     dx = clamp_mouse_delta(dx)
     dy = clamp_mouse_delta(dy)
 
     if dx == 0 and dy == 0:
         return
 
-    if dx != 0:
-        ui.write(e.EV_REL, e.REL_X, dx)
-    if dy != 0:
-        ui.write(e.EV_REL, e.REL_Y, dy)
+    if USE_ABSOLUTE_UINPUT:
+        abs_mouse_x = max(0, min(SCREEN_WIDTH, abs_mouse_x + dx))
+        abs_mouse_y = max(0, min(SCREEN_WIDTH, abs_mouse_y + dy))
+        ui.write(e.EV_ABS, e.ABS_X, abs_mouse_x)
+        ui.write(e.EV_ABS, e.ABS_Y, abs_mouse_y)
+    else:
+        if dx != 0:
+            ui.write(e.EV_REL, e.REL_X, dx)
+        if dy != 0:
+            ui.write(e.EV_REL, e.REL_Y, dy)
     ui.syn()
 
 
@@ -399,7 +426,7 @@ def move_worker():
         with move_target_lock:
             target_x = move_target_x
             steps_remaining = move_steps_remaining
-            current_x = virtual_current_x
+            current_x = abs_mouse_x if USE_ABSOLUTE_UINPUT else virtual_current_x
 
         delta_x = int(round(target_x - current_x))
 
@@ -419,7 +446,8 @@ def move_worker():
 
         with move_target_lock:
             if move_target_x == target_x:
-                virtual_current_x += step_delta
+                if not USE_ABSOLUTE_UINPUT:
+                    virtual_current_x += step_delta
                 move_steps_remaining = max(0, move_steps_remaining - 1)
 
                 if move_steps_remaining == 0:
