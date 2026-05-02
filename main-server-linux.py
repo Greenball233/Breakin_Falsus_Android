@@ -518,6 +518,12 @@ def handle_message(message):
         except ValueError:
             pass
 
+    elif key_type == "G":
+        try:
+            queue_accel_target(float(key_para))
+        except ValueError:
+            pass
+
     elif key_type == "M":
         try:
             apply_gyro(float(key_para))

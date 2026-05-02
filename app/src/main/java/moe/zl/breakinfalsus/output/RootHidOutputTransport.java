@@ -55,6 +55,11 @@ public class RootHidOutputTransport extends OutputTransport {
     }
 
     @Override
+    public void sendGravity(float value) {
+        // Mouse motion is emitted via sendMouseMove after value filtering.
+    }
+
+    @Override
     public void sendMouseMove(int deltaX, int deltaY) {
         byte[] report = new byte[]{
                 0x00,

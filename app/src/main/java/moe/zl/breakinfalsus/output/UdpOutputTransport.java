@@ -42,6 +42,11 @@ public class UdpOutputTransport extends OutputTransport {
     }
 
     @Override
+    public void sendGravity(float value) {
+        send(String.format(Locale.US, "G|%s", value));
+    }
+
+    @Override
     public void sendMouseMove(int deltaX, int deltaY) {
         // UDP mode uses semantic A/M packets, so raw mouse HID deltas are ignored here.
     }

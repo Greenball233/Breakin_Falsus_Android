@@ -19,3 +19,4 @@ server-config.toml
 __pycache__
 
 /venv/
+app/debug/
